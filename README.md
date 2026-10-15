@@ -40,26 +40,12 @@ Loyiha hech qanday aniq biznes domeniga (eKadr, CRM, ERP, E-commerce va h.k.) bo
 
 ## ⚡ Tezkor Boshlash (Quick Start)
 
-### 1. Infratuzilmani ishga tushirish (Docker)
-Loyiha ildiz papkasida barcha kerakli xizmatlarni (PostgreSQL, Redis, RabbitMQ, MinIO, Seq) bitta buyruq bilan ishga tushiring:
-
-```bash
-docker compose up -d
-```
-
-Xizmatlar portlari:
-- **PostgreSQL:** `localhost:5432` (`postgres` / `postgrespassword`)
-- **Redis:** `localhost:6379`
-- **RabbitMQ UI:** `http://localhost:15672` (`guest` / `guest`)
-- **MinIO Console:** `http://localhost:9001` (`minioadmin` / `minioadmin`)
-- **Seq Log Viewer:** `http://localhost:5341`
-
-### 2. Loyihani kompilyatsiya qilish
+### 1. Loyihani kompilyatsiya qilish
 ```bash
 dotnet build Microservices.slnx
 ```
 
-### 3. Gateway yoki servislarni ishga tushirish
+### 2. Gateway yoki servislarni ishga tushirish
 Namunaviy servisni ishga tushirish:
 ```bash
 dotnet run --project Services/Template/Template.Service/Microservices.Template.Service.csproj

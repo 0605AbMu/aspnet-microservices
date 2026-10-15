@@ -104,7 +104,6 @@ aspnet-microservices/
 ├── Directory.Build.props            # Global .NET 10, C# latest, NoWarn sozlamalari
 ├── Directory.Packages.props         # Central Package Management (CPM) barcha paketlar versiyasi
 ├── Microservices.slnx               # .NET 10 Solution fayli
-├── docker-compose.yml               # Postgres, Redis, RabbitMQ, MinIO, Seq
 ├── Common/                          # Microservices.Common: Barcha domen, shartnoma va bazaviy turlar
 │   ├── Cache/                       # ITenantCache
 │   ├── Constants/                   # ConnectionNames, AppClaimTypes, AppHeaderNames
