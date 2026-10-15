@@ -254,6 +254,7 @@ public static class WebCoreExtensions
             opts.GetLevel = (httpContext, elapsed, ex) =>
                 ex is not null ? Serilog.Events.LogEventLevel.Error
                 : httpContext.Response.StatusCode >= 500 ? Serilog.Events.LogEventLevel.Error
+                : httpContext.Request.Path.StartsWithSegments("/health") ? Serilog.Events.LogEventLevel.Verbose
                 : httpContext.Response.StatusCode >= 400 ? Serilog.Events.LogEventLevel.Warning
                 : Serilog.Events.LogEventLevel.Information;
         });

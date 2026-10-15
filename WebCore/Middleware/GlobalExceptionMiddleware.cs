@@ -22,6 +22,13 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        if (context.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogDebug("Request aborted by client. CorrelationId={CorrelationId} Path={Path}",
+                context.ResolveCorrelationId(), context.Request.Path);
+            return;
+        }
+
         if (context.Response.HasStarted)
         {
             logger.LogWarning("Response already started. Cannot write global exception response.");

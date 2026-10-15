@@ -15,20 +15,33 @@ public sealed class RedisHealthCheck : IHealthCheck
         _multiplexer = serviceProvider.GetService(typeof(IConnectionMultiplexer)) as IConnectionMultiplexer;
     }
 
-    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
+        if (_multiplexer is null)
+        {
+            return HealthCheckResult.Unhealthy("Redis multiplexer is not registered.");
+        }
+
+        if (!_multiplexer.IsConnected)
+        {
+            return HealthCheckResult.Unhealthy("Redis is disconnected.");
+        }
+
         try
         {
-            if (_multiplexer is not null && _multiplexer.IsConnected)
-            {
-                return Task.FromResult(HealthCheckResult.Healthy("Redis connection is active."));
-            }
+            var database = _multiplexer.GetDatabase();
+            var latency = await database.PingAsync();
 
-            return Task.FromResult(HealthCheckResult.Unhealthy("Redis is disconnected or unavailable."));
+            var data = new Dictionary<string, object>
+            {
+                ["pingMs"] = Math.Round(latency.TotalMilliseconds, 2)
+            };
+
+            return HealthCheckResult.Healthy($"Redis is responsive (ping: {latency.TotalMilliseconds:F1}ms)", data);
         }
         catch (Exception ex)
         {
-            return Task.FromResult(HealthCheckResult.Unhealthy("Redis health check failed.", ex));
+            return HealthCheckResult.Unhealthy("Redis health check ping failed.", ex);
         }
     }
 }
