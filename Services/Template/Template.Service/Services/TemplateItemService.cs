@@ -2,6 +2,7 @@ using MassTransit;
 using Microservices.Common.Context;
 using Microservices.Common.Filtering;
 using Microservices.Common.Models;
+using Microservices.Common.Persistence.Extensions;
 using Microservices.Template.Contracts.Dtos;
 using Microservices.Template.Contracts.Events;
 using Microservices.Template.Contracts.Exceptions;
@@ -44,32 +45,32 @@ public class TemplateItemService(
 
     public async Task<TemplateItemDto> CreateAsync(CreateTemplateItemRequest request, CancellationToken ct = default)
     {
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
-
-        var item = new TemplateItem
+        return await dbContext.Transactional(async () =>
         {
-            TenantId = tenantContext.TenantId,
-            Title = request.Title,
-            Description = request.Description,
-            Status = "Active"
-        };
+            var item = new TemplateItem
+            {
+                TenantId = tenantContext.TenantId,
+                Title = request.Title,
+                Description = request.Description,
+                Status = "Active"
+            };
 
-        dbContext.TemplateItems.Add(item);
-        await dbContext.SaveChangesAsync(ct);
+            dbContext.TemplateItems.Add(item);
+            await dbContext.SaveChangesAsync(ct);
 
-        // Publish to transactional outbox with the generated database Id within the active transaction
-        await publishEndpoint.Publish(new TemplateItemCreatedIntegrationEvent
-        {
-            ItemId = item.Id,
-            Title = item.Title
+            // Publish to transactional outbox with the generated database Id within the active transaction
+            await publishEndpoint.Publish(new TemplateItemCreatedIntegrationEvent
+            {
+                ItemId = item.Id,
+                Title = item.Title
+            }, ct);
+
+            await dbContext.SaveChangesAsync(ct);
+
+            logger.LogInfo("TemplateItem with Id {0} created successfully", item.Id);
+
+            return MapToDto(item);
         }, ct);
-
-        await dbContext.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-
-        logger.LogInfo("TemplateItem with Id {0} created successfully", item.Id);
-
-        return MapToDto(item);
     }
 
     public async Task<TemplateItemDto> UpdateAsync(long id, UpdateTemplateItemRequest request, CancellationToken ct = default)
