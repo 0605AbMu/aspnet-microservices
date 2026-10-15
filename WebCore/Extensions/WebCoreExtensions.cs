@@ -26,6 +26,7 @@ using Serilog;
 using Serilog.Context;
 using StackExchange.Redis;
 using Swashbuckle.AspNetCore.SwaggerUI;
+using Minio;
 
 namespace Microservices.WebCore.Extensions;
 
@@ -47,6 +48,20 @@ public static class WebCoreExtensions
         services.AddScoped<ITenantContext, TenantContextHttpContext>();
 
         // --- Shared Object Storage (MinIO) ---
+        services.AddSingleton<Minio.IMinioClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var endpoint = config["Minio:Endpoint"] ?? "localhost:9000";
+            var accessKey = config["Minio:AccessKey"] ?? "minioadmin";
+            var secretKey = config["Minio:SecretKey"] ?? "minioadmin";
+            var withSsl = config.GetValue<bool>("Minio:WithSSL");
+
+            return new Minio.MinioClient()
+                .WithEndpoint(endpoint)
+                .WithCredentials(accessKey, secretKey)
+                .WithSSL(withSsl)
+                .Build();
+        });
         services.AddScoped<IFileStorageService, MinioFileStorageService>();
 
         // --- Audit & Outbox Publisher ---
@@ -72,7 +87,11 @@ public static class WebCoreExtensions
         });
 
         services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(redisConnectionString));
+        {
+            var options = ConfigurationOptions.Parse(redisConnectionString);
+            options.AbortOnConnectFail = false;
+            return ConnectionMultiplexer.Connect(options);
+        });
 
         services.AddSingleton<IDistributedLock, RedisDistributedLock>();
 
@@ -138,7 +157,7 @@ public static class WebCoreExtensions
     {
         AppLogContext.CurrentServiceName = serviceName;
 
-        const string outputTemplate = "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] [{MethodName}] {Message:lj}{NewLine}{Exception}";
+        const string outputTemplate = "[{Timestamp:HH:mm:ss} {Level:u3}] [{ServiceName}] [{ClassName}.{MethodName}:{LineNumber}] {Message:lj}{NewLine}{Exception}";
 
         Log.Logger = new LoggerConfiguration()
             .ReadFrom.Configuration(configuration)
@@ -176,10 +195,10 @@ public static class WebCoreExtensions
         // 1. Correlation ID middleware — must be first
         app.UseMiddleware<CorrelationIdMiddleware>();
 
-        // 2. Ambient LogContext Middleware (MethodName)
+        // 2. Ambient LogContext Middleware (Endpoint)
         app.Use(async (context, next) =>
         {
-            using (LogContext.PushProperty("MethodName", context.ResolveEndpointMethodName()))
+            using (LogContext.PushProperty("Endpoint", context.ResolveEndpointMethodName()))
             {
                 await next();
             }
@@ -191,7 +210,9 @@ public static class WebCoreExtensions
             opts.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
             {
                 diagnosticContext.Set("ServiceName", AppLogContext.CurrentServiceName);
+                diagnosticContext.Set("ClassName", httpContext.ResolveEndpointClassName());
                 diagnosticContext.Set("MethodName", httpContext.ResolveEndpointMethodName());
+                diagnosticContext.Set("LineNumber", 0);
                 diagnosticContext.Set(AppItemKeys.UserId,
                     httpContext.User.FindFirst(AppClaimTypes.Sub)?.Value ?? "anonymous");
                 diagnosticContext.Set(AppItemKeys.CorrelationId,

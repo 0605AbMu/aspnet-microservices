@@ -52,6 +52,16 @@ public static class HttpContextExtensions
     }
 
     /// <summary>
+    /// Resolves controller class name or endpoint group for structured logging.
+    /// </summary>
+    public static string ResolveEndpointClassName(this HttpContext context)
+    {
+        var endpoint = context.GetEndpoint();
+        var actionDescriptor = endpoint?.Metadata.GetMetadata<ControllerActionDescriptor>();
+        return actionDescriptor?.ControllerTypeInfo.Name ?? "HttpEndpoint";
+    }
+
+    /// <summary>
     /// Writes a standardized camelCase ApiResponse JSON error payload to the HTTP response.
     /// </summary>
     public static Task WriteErrorResponseAsync(
