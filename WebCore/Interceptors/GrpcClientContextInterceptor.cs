@@ -64,10 +64,6 @@ public class GrpcClientContextInterceptor(
 
         if (tenantContext.TenantId.HasValue)
             SafeAdd(headers, AppGrpcMetadataKeys.TenantId, tenantContext.TenantId.Value.ToString());
-        if (tenantContext.DistrictId.HasValue)
-            SafeAdd(headers, AppGrpcMetadataKeys.DistrictId, tenantContext.DistrictId.Value.ToString());
-        if (tenantContext.RegionId.HasValue)
-            SafeAdd(headers, AppGrpcMetadataKeys.RegionId, tenantContext.RegionId.Value.ToString());
 
         SafeAdd(headers, AppGrpcMetadataKeys.TenantScope, tenantContext.Scope.ToString().ToLowerInvariant());
 

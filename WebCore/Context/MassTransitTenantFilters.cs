@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Microservices.WebCore.Context;
 
 /// <summary>
-/// Automatically propagates TenantId, DistrictId, RegionId, TenantScope, UserId, and CorrelationId
+/// Automatically propagates TenantId, TenantScope, UserId, and CorrelationId
 /// into outgoing MassTransit message headers.
 /// </summary>
 public class MassTransitTenantPublishFilter<T>(
@@ -20,12 +20,6 @@ public class MassTransitTenantPublishFilter<T>(
     {
         if (tenantContext.TenantId.HasValue)
             context.Headers.Set(AppHeaderNames.TenantId, tenantContext.TenantId.Value.ToString());
-
-        if (tenantContext.DistrictId.HasValue)
-            context.Headers.Set(AppHeaderNames.DistrictId, tenantContext.DistrictId.Value.ToString());
-
-        if (tenantContext.RegionId.HasValue)
-            context.Headers.Set(AppHeaderNames.RegionId, tenantContext.RegionId.Value.ToString());
 
         context.Headers.Set(AppHeaderNames.TenantScope, tenantContext.Scope.ToString());
 
@@ -51,12 +45,6 @@ public class MassTransitTenantSendFilter<T>(
         if (tenantContext.TenantId.HasValue)
             context.Headers.Set(AppHeaderNames.TenantId, tenantContext.TenantId.Value.ToString());
 
-        if (tenantContext.DistrictId.HasValue)
-            context.Headers.Set(AppHeaderNames.DistrictId, tenantContext.DistrictId.Value.ToString());
-
-        if (tenantContext.RegionId.HasValue)
-            context.Headers.Set(AppHeaderNames.RegionId, tenantContext.RegionId.Value.ToString());
-
         context.Headers.Set(AppHeaderNames.TenantScope, tenantContext.Scope.ToString());
 
         if (currentUser.UserId.HasValue)
@@ -80,8 +68,6 @@ public class MassTransitTenantConsumeFilter<T> : IFilter<ConsumeContext<T>>
         var tenantContext = context.GetPayload<IServiceProvider>().GetRequiredService<ITenantContext>();
 
         long? tenantId = TryGetLongHeader(context.Headers, AppHeaderNames.TenantId);
-        long? districtId = TryGetLongHeader(context.Headers, AppHeaderNames.DistrictId);
-        long? regionId = TryGetLongHeader(context.Headers, AppHeaderNames.RegionId);
 
         TenantScope? scope = null;
         if (context.Headers.TryGetHeader(AppHeaderNames.TenantScope, out var scopeObj) &&
@@ -91,7 +77,7 @@ public class MassTransitTenantConsumeFilter<T> : IFilter<ConsumeContext<T>>
             scope = parsedScope;
         }
 
-        using (tenantContext.Change(tenantId, districtId, regionId, scope))
+        using (tenantContext.Change(tenantId, scope))
         {
             await next.Send(context);
         }

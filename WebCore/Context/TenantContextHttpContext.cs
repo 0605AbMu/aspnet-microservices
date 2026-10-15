@@ -7,7 +7,7 @@ namespace Microservices.WebCore.Context;
 
 /// <summary>
 /// Reads tenant context from JWT claims in HttpContext.
-/// Supports hierarchical tenancy: Tenant → District → Region → Global.
+/// Supports multi-tenancy: Tenant or Global scope.
 /// Supports DisableTenantFilter() for background tasks or cross-tenant queries.
 /// Registered as Scoped — per-request lifetime.
 /// </summary>
@@ -20,12 +20,6 @@ public class TenantContextHttpContext(IHttpContextAccessor httpContextAccessor) 
 
     public long? TenantId =>
         _override.Value?.TenantId ?? (long.TryParse(User?.FindFirstValue(AppClaimTypes.TenantId), out var id) ? id : null);
-
-    public long? DistrictId =>
-        _override.Value?.DistrictId ?? (long.TryParse(User?.FindFirstValue(AppClaimTypes.DistrictId), out var id) ? id : null);
-
-    public long? RegionId =>
-        _override.Value?.RegionId ?? (long.TryParse(User?.FindFirstValue(AppClaimTypes.RegionId), out var id) ? id : null);
 
     public TenantScope Scope =>
         _override.Value?.Scope ?? (Enum.TryParse<TenantScope>(User?.FindFirstValue(AppClaimTypes.TenantScope), ignoreCase: true, out var scope)
@@ -40,15 +34,15 @@ public class TenantContextHttpContext(IHttpContextAccessor httpContextAccessor) 
         return new FilterScopeToken(() => isTenantFilterDisabled = false);
     }
 
-    public IDisposable Change(long? tenantId, long? districtId = null, long? regionId = null, TenantScope? scope = null)
+    public IDisposable Change(long? tenantId, TenantScope? scope = null)
     {
         var previous = _override.Value;
         var resolvedScope = scope ?? (tenantId.HasValue ? TenantScope.Tenant : TenantScope.Global);
-        _override.Value = new TenantOverrideData(tenantId, districtId, regionId, resolvedScope);
+        _override.Value = new TenantOverrideData(tenantId, resolvedScope);
         return new FilterScopeToken(() => _override.Value = previous);
     }
 
-    private record TenantOverrideData(long? TenantId, long? DistrictId, long? RegionId, TenantScope Scope);
+    private record TenantOverrideData(long? TenantId, TenantScope Scope);
 
     private sealed class FilterScopeToken(Action onDispose) : IDisposable
     {

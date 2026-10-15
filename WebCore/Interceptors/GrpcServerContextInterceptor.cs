@@ -68,14 +68,6 @@ public class GrpcServerContextInterceptor(
             claims.Add(new Claim(AppClaimTypes.TenantId, tenantId));
         }
 
-        var districtId = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.DistrictId, StringComparison.OrdinalIgnoreCase))?.Value;
-        if (!string.IsNullOrEmpty(districtId))
-            claims.Add(new Claim(AppClaimTypes.DistrictId, districtId));
-
-        var regionId = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.RegionId, StringComparison.OrdinalIgnoreCase))?.Value;
-        if (!string.IsNullOrEmpty(regionId))
-            claims.Add(new Claim(AppClaimTypes.RegionId, regionId));
-
         var tenantScope = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.TenantScope, StringComparison.OrdinalIgnoreCase))?.Value;
         if (!string.IsNullOrEmpty(tenantScope))
             claims.Add(new Claim(AppClaimTypes.TenantScope, tenantScope));

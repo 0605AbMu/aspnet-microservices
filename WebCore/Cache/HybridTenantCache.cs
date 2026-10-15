@@ -78,7 +78,7 @@ public class HybridTenantCache(HybridCache hybridCache, ITenantContext tenantCon
     private string GetTenantPrefix()
     {
         if (tenantContext.IsCrossTenant)
-            return $"scope:{tenantContext.Scope.ToString().ToLowerInvariant()}:{tenantContext.RegionId ?? 0}:{tenantContext.DistrictId ?? 0}";
+            return $"scope:{tenantContext.Scope.ToString().ToLowerInvariant()}";
 
         return $"tenant:{tenantContext.TenantId ?? 0}";
     }
