@@ -35,7 +35,6 @@ Loyiha hech qanday aniq biznes domeniga (eKadr, CRM, ERP, E-commerce va h.k.) bo
 | `Integration/Microservices.Integration` | Tashqi uchinchi tomon tizimlari bilan integratsiyalar uchun resilient HttpClient bazasi (Polly v8 standard resilience handler). |
 | `Gateway/Microservices.Gateway` | YARP (Yet Another Reverse Proxy) asosidagi zamonaviy va yuqori unumdor API Gateway. |
 | `Services/Template/` | Namunaviy bo'sh mikroservis (`Template.Contracts` va `Template.Service`). |
-| `scripts/new-service.sh` | 1 soniyada yangi mikroservis generatsiya qiluvchi avtomatlashtirish skripti. |
 
 ---
 
@@ -75,20 +74,16 @@ Gateway manzili: `http://localhost:5000`
 
 ---
 
-## 🛠️ Yangi Mikroservis Yaratish (Scaffolding)
+## 🛠️ Yangi Mikroservis Yaratish
 
-Yangi mikroservis yaratish uchun tayyor generator skriptidan foydalaning:
-
-```bash
-./scripts/new-service.sh Billing
-```
-
-Ushbu skript avtomatik ravishda:
-1. `Services/Billing/Billing.Contracts` loyihasini (DTOs, gRPC interfeys, hodisalar va istisnolar bilan) yaratadi.
-2. `Services/Billing/Billing.Service` loyihasini (`AddMicroserviceDbContext`, `MassTransit Outbox`, `gRPC Code-First`, `Controller`, `Service`, `Program.cs`, `appsettings.json`, `Dockerfile` bilan) yaratadi.
-3. Yangi loyihalarni `Microservices.slnx` ga avtomatik qo'shadi.
-
-Siz faqat o'z domen modullaringizni qo'shib, biznes mantiqni yozishni boshlaysiz!
+Yangi mikroservis yaratish uchun tayyor `Services/Template` namunasidan nusxa olinadi:
+1. `Services/[ServiceName]/[ServiceName].Contracts` (DTOlar, gRPC interfeys, hodisalar va istisnolar).
+2. `Services/[ServiceName]/[ServiceName].Service` (`AddMicroserviceDbContext`, `MassTransit Outbox`, `gRPC Code-First`, `Controller`, `Service`, `Program.cs`, `appsettings.json`, `Dockerfile`).
+3. Yangi loyihalarni `Microservices.slnx` ga qo'shish:
+   ```bash
+   dotnet sln Microservices.slnx add Services/[ServiceName]/[ServiceName].Contracts
+   dotnet sln Microservices.slnx add Services/[ServiceName]/[ServiceName].Service
+   ```
 
 ---
 
