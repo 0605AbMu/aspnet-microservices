@@ -33,7 +33,7 @@ public class RedisDistributedLock(
             if (acquired)
             {
                 logger.LogDebug("Acquired distributed lock for key {Key}", lockKey);
-                return new LockReleaser(database, lockKey, lockValue, logger);
+                return new LockReleaser(database, lockKey, lockValue, expiry, logger);
             }
 
             try
@@ -58,23 +58,66 @@ public class RedisDistributedLock(
         return !val.IsNull;
     }
 
-    private sealed class LockReleaser(
-        IDatabase database,
-        string lockKey,
-        string lockValue,
-        ILogger logger) : IAsyncDisposable
+    private sealed class LockReleaser : IAsyncDisposable
     {
-        private int released;
+        private readonly IDatabase _database;
+        private readonly string _lockKey;
+        private readonly string _lockValue;
+        private readonly TimeSpan _expiry;
+        private readonly ILogger _logger;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly Task? _renewalTask;
+        private int _released;
+
+        public LockReleaser(IDatabase database, string lockKey, string lockValue, TimeSpan expiry, ILogger logger)
+        {
+            _database = database;
+            _lockKey = lockKey;
+            _lockValue = lockValue;
+            _expiry = expiry;
+            _logger = logger;
+
+            var renewalInterval = TimeSpan.FromMilliseconds(Math.Max(1000, expiry.TotalMilliseconds / 2));
+            _renewalTask = StartAutoRenewalAsync(renewalInterval, _cts.Token);
+        }
+
+        private async Task StartAutoRenewalAsync(TimeSpan interval, CancellationToken ct)
+        {
+            using var timer = new PeriodicTimer(interval);
+            try
+            {
+                while (await timer.WaitForNextTickAsync(ct))
+                {
+                    var extended = await _database.LockExtendAsync(_lockKey, _lockValue, _expiry);
+                    if (!extended)
+                    {
+                        _logger.LogWarning("Failed to extend distributed lock for key {Key}", _lockKey);
+                        break;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal cancellation on disposal
+            }
+        }
 
         public async ValueTask DisposeAsync()
         {
-            if (Interlocked.Exchange(ref released, 1) == 0)
+            if (Interlocked.Exchange(ref _released, 1) == 0)
             {
-                var success = await database.LockReleaseAsync(lockKey, lockValue);
+                _cts.Cancel();
+                if (_renewalTask is not null)
+                {
+                    try { await _renewalTask; } catch { }
+                }
+                _cts.Dispose();
+
+                var success = await _database.LockReleaseAsync(_lockKey, _lockValue);
                 if (success)
-                    logger.LogDebug("Released distributed lock for key {Key}", lockKey);
+                    _logger.LogDebug("Released distributed lock for key {Key}", _lockKey);
                 else
-                    logger.LogWarning("Failed or lock expired before release for key {Key}", lockKey);
+                    _logger.LogWarning("Failed or lock expired before release for key {Key}", _lockKey);
             }
         }
     }

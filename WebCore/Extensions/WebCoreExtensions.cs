@@ -7,6 +7,7 @@ using Microservices.Common.Storage;
 using Microservices.WebCore.Audit;
 using Microservices.WebCore.Cache;
 using Microservices.WebCore.Context;
+using Microservices.WebCore.HealthChecks;
 using Microservices.WebCore.Interceptors;
 using Microservices.WebCore.Lock;
 using Microservices.WebCore.Logging;
@@ -130,7 +131,8 @@ public static class WebCoreExtensions
         });
 
         // --- Health Checks ---
-        services.AddHealthChecks();
+        services.AddHealthChecks()
+            .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
 
         // --- Graceful Shutdown (30s) ---
         services.Configure<HostOptions>(opts =>

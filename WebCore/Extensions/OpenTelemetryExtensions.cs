@@ -2,6 +2,7 @@ using Microservices.Common.Constants;
 using Microservices.Common.Options;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -10,7 +11,8 @@ namespace Microservices.WebCore.Extensions;
 public static class OpenTelemetryExtensions
 {
     /// <summary>
-    /// Configures OpenTelemetry tracing with OTLP exporter.
+    /// Configures OpenTelemetry tracing and metrics with OTLP exporter,
+    /// including ASP.NET Core, HttpClient, MassTransit, and Npgsql instrumentation.
     /// </summary>
     public static IServiceCollection AddMicroserviceOpenTelemetry(
         this IServiceCollection services,
@@ -18,6 +20,7 @@ public static class OpenTelemetryExtensions
     {
         var serviceOptions = configuration.GetSection(ConfigSections.Service).Get<ServiceOptions>() ?? new ServiceOptions();
         var otelOptions = configuration.GetSection(ConfigSections.OpenTelemetry).Get<OpenTelemetryOptions>() ?? new OpenTelemetryOptions();
+        var otelEndpoint = new Uri(otelOptions.Endpoint);
 
         services.AddOpenTelemetry()
             .ConfigureResource(resource =>
@@ -25,6 +28,8 @@ public static class OpenTelemetryExtensions
             .WithTracing(tracing =>
             {
                 tracing
+                    .AddSource("MassTransit")
+                    .AddSource("Npgsql")
                     .AddAspNetCoreInstrumentation(opts =>
                     {
                         opts.RecordException = true;
@@ -36,7 +41,18 @@ public static class OpenTelemetryExtensions
                     .AddHttpClientInstrumentation()
                     .AddOtlpExporter(opts =>
                     {
-                        opts.Endpoint = new Uri(otelOptions.Endpoint);
+                        opts.Endpoint = otelEndpoint;
+                    });
+            })
+            .WithMetrics(metrics =>
+            {
+                metrics
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddMeter("Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel", "System.Net.Http")
+                    .AddOtlpExporter(opts =>
+                    {
+                        opts.Endpoint = otelEndpoint;
                     });
             });
 

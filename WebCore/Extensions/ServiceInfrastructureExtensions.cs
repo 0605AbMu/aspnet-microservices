@@ -2,6 +2,7 @@ using MassTransit;
 using Microservices.Common.Constants;
 using Microservices.Common.Options;
 using Microservices.Common.Persistence.Interceptors;
+using Microservices.WebCore.Context;
 using Microservices.WebCore.Interceptors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -21,6 +22,7 @@ public static class ServiceInfrastructureExtensions
     /// Registers a scoped PostgreSQL DbContext with retry-on-failure, snake_case naming convention,
     /// and the asynchronous AuditSaveChangesInterceptor.
     /// Uses scoped DbContext lifetime to guarantee safe multi-tenant context injection without pool leakage.
+    /// Also registers an automatic database readiness health check.
     /// </summary>
     public static IServiceCollection AddMicroserviceDbContext<TDbContext>(
         this IServiceCollection services,
@@ -31,6 +33,8 @@ public static class ServiceInfrastructureExtensions
     {
         var connectionString = configuration.GetConnectionString(connectionName)
             ?? throw new InvalidOperationException($"Connection string '{connectionName}' is not configured.");
+
+        services.AddHealthChecks().AddDbContextCheck<TDbContext>("database", tags: ["ready"]);
 
         services.AddDbContext<TDbContext>((sp, options) =>
         {
@@ -75,12 +79,15 @@ public static class ServiceInfrastructureExtensions
 
         services.AddMassTransit(x =>
         {
+            x.SetKebabCaseEndpointNameFormatter();
+
             configureBus?.Invoke(x);
 
             x.AddEntityFrameworkOutbox<TDbContext>(o =>
             {
                 o.UsePostgres();
                 o.UseBusOutbox();
+                o.DuplicateDetectionWindow = TimeSpan.FromMinutes(30);
             });
 
             x.UsingRabbitMq((context, cfg) =>
@@ -90,6 +97,11 @@ public static class ServiceInfrastructureExtensions
                     h.Username(rabbitOptions.Username);
                     h.Password(rabbitOptions.Password);
                 });
+
+                // Attach automatic multi-tenancy context propagation filters
+                cfg.UsePublishFilter(typeof(MassTransitTenantPublishFilter<>), context);
+                cfg.UseSendFilter(typeof(MassTransitTenantSendFilter<>), context);
+                cfg.UseConsumeFilter(typeof(MassTransitTenantConsumeFilter<>), context);
 
                 configureRabbitMq?.Invoke(context, cfg);
 

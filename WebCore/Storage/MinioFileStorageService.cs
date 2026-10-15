@@ -32,26 +32,83 @@ public class MinioFileStorageService(
         string contentType = "application/octet-stream",
         CancellationToken ct = default)
     {
+        using var stream = new MemoryStream(fileBytes);
+        return await UploadStreamAsync(bucketName, objectKey, stream, fileBytes.Length, contentType, ct);
+    }
+
+    public async Task<string> UploadStreamAsync(
+        string bucketName,
+        string objectKey,
+        Stream stream,
+        long size,
+        string contentType = "application/octet-stream",
+        CancellationToken ct = default)
+    {
         try
         {
             await EnsureBucketAsync(bucketName, ct);
 
-            using var stream = new MemoryStream(fileBytes);
             var putObjectArgs = new PutObjectArgs()
                 .WithBucket(bucketName)
                 .WithObject(objectKey)
                 .WithStreamData(stream)
-                .WithObjectSize(stream.Length)
+                .WithObjectSize(size)
                 .WithContentType(contentType);
 
             await minioClient.PutObjectAsync(putObjectArgs, ct);
-            logger.LogInformation("MinIO file uploaded: Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
+            logger.LogInformation("MinIO file streamed: Bucket={Bucket}, ObjectKey={ObjectKey}, Size={Size}", bucketName, objectKey, size);
             return objectKey;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "MinIO upload failed for Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
+            logger.LogError(ex, "MinIO stream upload failed for Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
             throw new InvalidOperationException($"MinIO file upload failed for '{objectKey}': {ex.Message}", ex);
+        }
+    }
+
+    public async Task DownloadStreamAsync(
+        string bucketName,
+        string objectKey,
+        Stream destination,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var getObjectArgs = new GetObjectArgs()
+                .WithBucket(bucketName)
+                .WithObject(objectKey)
+                .WithCallbackStream(async (stream, token) =>
+                {
+                    await stream.CopyToAsync(destination, token);
+                });
+
+            await minioClient.GetObjectAsync(getObjectArgs, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "MinIO download failed for Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
+            throw new InvalidOperationException($"MinIO file download failed for '{objectKey}': {ex.Message}", ex);
+        }
+    }
+
+    public async Task DeleteObjectAsync(
+        string bucketName,
+        string objectKey,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var removeArgs = new RemoveObjectArgs()
+                .WithBucket(bucketName)
+                .WithObject(objectKey);
+
+            await minioClient.RemoveObjectAsync(removeArgs, ct);
+            logger.LogInformation("MinIO file deleted: Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "MinIO delete failed for Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
+            throw new InvalidOperationException($"MinIO file delete failed for '{objectKey}': {ex.Message}", ex);
         }
     }
 
