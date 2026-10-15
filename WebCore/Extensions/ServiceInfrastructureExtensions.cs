@@ -25,6 +25,23 @@ public static class ServiceInfrastructureExtensions
     /// Uses scoped DbContext lifetime to guarantee safe multi-tenant context injection without pool leakage.
     /// Also registers an automatic database readiness health check.
     /// </summary>
+    private static Npgsql.NpgsqlDataSourceBuilder CreateTunedNpgsqlDataSourceBuilder(string connectionString)
+    {
+        var builder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+
+        if (builder.ConnectionStringBuilder.MinPoolSize == 0)
+        {
+            builder.ConnectionStringBuilder.MinPoolSize = 10;
+        }
+
+        if (builder.ConnectionStringBuilder.KeepAlive == 0)
+        {
+            builder.ConnectionStringBuilder.KeepAlive = 30;
+        }
+
+        return builder;
+    }
+
     /// <summary>
     /// Registers a tuned, singleton NpgsqlDataSource for statement auto-preparation,
     /// dynamic multiplexing, and optimal connection pooling.
@@ -40,7 +57,7 @@ public static class ServiceInfrastructureExtensions
 
         services.AddSingleton(sp =>
         {
-            var builder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+            var builder = CreateTunedNpgsqlDataSourceBuilder(connectionString);
             configureBuilder?.Invoke(builder);
             return builder.Build();
         });
@@ -62,7 +79,7 @@ public static class ServiceInfrastructureExtensions
 
         services.TryAddSingleton(sp =>
         {
-            var builder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+            var builder = CreateTunedNpgsqlDataSourceBuilder(connectionString);
             return builder.Build();
         });
 
@@ -76,6 +93,7 @@ public static class ServiceInfrastructureExtensions
                 {
                     npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
                     npgsql.CommandTimeout(commandTimeoutSeconds);
+                    npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
                     npgsql.MigrationsAssembly(typeof(TDbContext).Assembly.FullName);
                 })
                 .UseSnakeCaseNamingConvention()
@@ -159,12 +177,18 @@ public static class ServiceInfrastructureExtensions
     }
 
     /// <summary>
-    /// Registers Code-First gRPC server with context &amp; exception interceptors.
+    /// Registers Code-First gRPC server with context &amp; exception interceptors,
+    /// 16MB max payload size, and response compression support.
     /// </summary>
-    public static IServiceCollection AddMicroserviceGrpcServer(this IServiceCollection services)
+    public static IServiceCollection AddMicroserviceGrpcServer(
+        this IServiceCollection services,
+        int maxMessageSizeInBytes = 16 * 1024 * 1024)
     {
         services.AddCodeFirstGrpc(options =>
         {
+            options.MaxReceiveMessageSize = maxMessageSizeInBytes;
+            options.MaxSendMessageSize = maxMessageSizeInBytes;
+            options.ResponseCompressionLevel = System.IO.Compression.CompressionLevel.Fastest;
             options.Interceptors.Add<GrpcServerContextInterceptor>();
             options.Interceptors.Add<GrpcExceptionInterceptor>();
         });
@@ -174,15 +198,24 @@ public static class ServiceInfrastructureExtensions
 
     /// <summary>
     /// Registers a Code-First gRPC client with automatic context &amp; deadline propagation,
-    /// and tuned SocketsHttpHandler for HTTP/2 multi-stream connection pooling.
+    /// 16MB max payload size, and tuned SocketsHttpHandler for HTTP/2 multi-stream connection pooling.
     /// </summary>
     public static IHttpClientBuilder AddMicroserviceGrpcClient<TClient>(
         this IServiceCollection services,
-        string address)
+        string address,
+        int maxMessageSizeInBytes = 16 * 1024 * 1024)
         where TClient : class
     {
         return services
-            .AddCodeFirstGrpcClient<TClient>(o => o.Address = new Uri(address))
+            .AddCodeFirstGrpcClient<TClient>(o =>
+            {
+                o.Address = new Uri(address);
+                o.ChannelOptionsActions.Add(opt =>
+                {
+                    opt.MaxReceiveMessageSize = maxMessageSizeInBytes;
+                    opt.MaxSendMessageSize = maxMessageSizeInBytes;
+                });
+            })
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
             {
                 EnableMultipleHttp2Connections = true,
