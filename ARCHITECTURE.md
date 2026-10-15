@@ -10,7 +10,7 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
 - Har bir mikroservis faqat o'z ma'lumotlar bazasiga ega bo'ladi (Database-per-Service pattern).
 - Servislarning boshqa servis bazasiga to'g'ridan-to'g'ri ulanishi qat'iyan man etiladi.
 - Baza sifatida faqat **PostgreSQL** (`Npgsql.EntityFrameworkCore.PostgreSQL`) ishlatiladi.
-- Barcha `DbContext` lar Singleton `NpgsqlDataSource` orqali ulanadi (global statement auto-preparation, dynamic multiplexing, `MinPoolSize = 10`, `KeepAlive = 30s` va connection pool tuning). To'g'ridan-to'g'ri string fallback taqiqlangan, to'liq `NpgsqlDataSource` talab qilinadi.
+- Barcha `DbContext` lar Singleton `NpgsqlDataSource` orqali ulanadi (global statement auto-preparation: `MaxAutoPrepare = 50`, `AutoPrepareMinUsages = 2`, dynamic multiplexing, `MinPoolSize = 10`, `KeepAlive = 30s` va connection pool tuning). To'g'ridan-to'g'ri string fallback taqiqlangan, to'liq `NpgsqlDataSource` talab qilinadi. Serverda SQL parsing va execution plan rejalashtirish xarajatlari kamaytirilgan.
 - Katta jadvallarda Cartesian Product ko'payib ketishining oldini olish uchun so'rovlarda `QuerySplittingBehavior.SplitQuery` sukut bo'yicha yoqilgan.
 
 ### 1.2. Servis Ichki Qatlami: Pragmatic Direct Flow (No CQRS, No Repository)
@@ -107,8 +107,8 @@ Sahifalash uchun:
 - **Resilience:** Polly v8 (`Microsoft.Extensions.Http.Resilience`) asosidagi `AddStandardResilienceHandler` orqali qayta urinish, timeout va circuit-breaker himoyasi.
 - **Health Checks & Monitoring:** `/health/live` (liveness), `/health/ready` (batafsil JSON formatda DB va Redis tayyorligi va millisekundlardagi kechikish hisoboti, qotib qolishning oldini olish uchun 3s timeout bilan), hamda YARP Gateway Active Health Check bilan avtomatik failover.
 - **Kestrel Server Cheklovlari:** Katta hajmdagi fayllarni MinIO ga xavfsiz yuklash uchun `MaxRequestBodySize` sukut bo'yicha 50MB ga moslashtirilgan (va `Kestrel:MaxRequestBodySize` orqali dinamik sozlanadi).
-- **Siqish (Compression):** Brotli (asosiy) + Gzip (fallback) orqali tarmoq trafigini siqish (gRPC binary oqimlarini buzmagan holda).
-- **OpenTelemetry:** OTLP protokoli orqali so'rovlar zanjirini kuzatish (MassTransit, Npgsql, HttpClient, AspNetCore tracing va Runtime/Process metrics).
+- **Siqish (Compression):** Brotli (asosiy, `Fastest`) + Gzip (fallback, `SmallestSize`) orqali tarmoq trafigini siqish. Server CPU yuklamasini tejash uchun siqish faqat matnli va strukturaviy ma'lumotlarga (`application/json`, `application/problem+json`, `application/xml`, `text/*`, `application/javascript`, `application/grpc-web`) yo'naltirilgan, pre-compressed ikkilik fayllar (rasm, PDF, video, ZIP) qayta siqilmaydi.
+- **OpenTelemetry:** OTLP protokoli orqali so'rovlar zanjirini kuzatish (MassTransit, Npgsql, HttpClient, AspNetCore tracing va Runtime/Process metrics). Yuqori yuklamada collectorlar va tarmoq trafigini haddan tashqari to'lib ketishdan himoyalash uchun `OpenTelemetryOptions.SamplingRatio` (default `1.0`, ya'ni 100%, prod uchun sozlanuvchi) va `TraceIdRatioBasedSampler` orqali telemetriya hajmi boshqariladi.
 - **Serilog Logging:** `AppLoggerExtensions` (`LogInfo`, `LogWarn`, `LogError`, `LogDebug`) orqali log yozgan servis nomi (`ServiceName`), sinf nomi (`ClassName`), metod nomi (`MethodName`) va manba qatori (`LineNumber`) to'liq kompilyatsiya vaqtida (Compiler-Generated, 0 StackTrace) `[ServiceName] [ClassName.MethodName:LineNumber]` formatida muhrlanadi.
 
 ---
