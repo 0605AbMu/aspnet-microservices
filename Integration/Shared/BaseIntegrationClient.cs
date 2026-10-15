@@ -39,7 +39,7 @@ public abstract class BaseIntegrationClient(HttpClient httpClient, ILogger logge
     {
         try
         {
-            var response = await HttpClient.PostAsJsonAsync(url, request, JsonOpts, ct);
+            using var response = await HttpClient.PostAsJsonAsync(url, request, JsonOpts, ct);
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<TResponse>(JsonOpts, ct);
         }
