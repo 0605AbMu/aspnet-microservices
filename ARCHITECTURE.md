@@ -111,6 +111,7 @@ Sahifalash uchun:
 - **OpenTelemetry:** OTLP protokoli orqali so'rovlar zanjirini kuzatish (MassTransit, Npgsql, HttpClient, AspNetCore tracing va Runtime/Process metrics). Yuqori yuklamada collectorlar va tarmoq trafigini haddan tashqari to'lib ketishdan himoyalash uchun `OpenTelemetryOptions.SamplingRatio` (default `1.0`, ya'ni 100%, prod uchun sozlanuvchi) va `TraceIdRatioBasedSampler` orqali telemetriya hajmi boshqariladi.
 - **Serilog Logging & Shovqinni Filtrlash:** `AppLoggerExtensions` orqali 0 StackTrace kompilyatsiya vaqtidagi caller ma'lumotlari muhrlanadi; shuningdek, Kubernetes va Gateway ning doimiy `/health` tekshiruvlari `LogEventLevel.Verbose` darajasiga tushirilib, millionlab keraksiz log shovqinlari (noise pollution) filtrlanadi.
 - **Global Exception & Client Abort Handling:** Mijoz brauzerni muddatidan oldin yopganda (`context.RequestAborted`), `GlobalExceptionMiddleware` o'lik tarmoq soketiga yozishga urinmasdan jarayonni xavfsiz yakunlaydi (`499/Silent Abort`).
+- **Reverse Proxy & Forwarded Headers (Nginx / Ingress / Cloudflare):** Nginx, Cloudflare yoki Kubernetes Ingress ortida ishlaganda haqiqiy mijoz IP manzili va HTTPS sxemasini to'g'ri aniqlash uchun `UseForwardedHeaders` bilan `ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost` faollashtirilgan; ichki pod/container tarmoqlaridagi so'rovlar cheklanib qolmasligi uchun `KnownIPNetworks.Clear()` va `KnownProxies.Clear()` sozlangan. Pipeline'ning eng boshida turishi kafolatlangan.
 
 ---
 
