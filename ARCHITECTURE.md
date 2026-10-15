@@ -10,7 +10,8 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
 - Har bir mikroservis faqat o'z ma'lumotlar bazasiga ega bo'ladi (Database-per-Service pattern).
 - Servislarning boshqa servis bazasiga to'g'ridan-to'g'ri ulanishi qat'iyan man etiladi.
 - Baza sifatida faqat **PostgreSQL** (`Npgsql.EntityFrameworkCore.PostgreSQL`) ishlatiladi.
-- Barcha `DbContext` lar Singleton `NpgsqlDataSource` orqali ulanadi (global statement auto-preparation, dynamic multiplexing va optimal connection pooling). To'g'ridan-to'g'ri string fallback taqiqlangan, to'liq `NpgsqlDataSource` talab qilinadi.
+- Barcha `DbContext` lar Singleton `NpgsqlDataSource` orqali ulanadi (global statement auto-preparation, dynamic multiplexing, `MinPoolSize = 10`, `KeepAlive = 30s` va connection pool tuning). To'g'ridan-to'g'ri string fallback taqiqlangan, to'liq `NpgsqlDataSource` talab qilinadi.
+- Katta jadvallarda Cartesian Product ko'payib ketishining oldini olish uchun so'rovlarda `QuerySplittingBehavior.SplitQuery` sukut bo'yicha yoqilgan.
 
 ### 1.2. Servis Ichki Qatlami: Pragmatic Direct Flow (No CQRS, No Repository)
 - **Repository Pattern taqiqlanadi:** EF Core `DbContext` ning o'zi repository va unit-of-work hisoblanadi. Keraksiz abstraksiya qatlamlari qo'shilmaydi.
@@ -26,7 +27,7 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
   - Cascading failure ning oldini olish uchun har bir gRPC chaqiruvida majburiy **Deadline (Timeout: 10 soniya)** va `CancellationToken` ishlatiladi.
   - `GrpcClientContextInterceptor` va `GrpcServerContextInterceptor` orqali `CorrelationId`, `TenantId`, `UserId` va `traceparent` avtomatik uzatiladi.
   - `GrpcExceptionInterceptor` orqali `AppException` avtomatik tarzda tegishli `RpcException` ga o'giriladi.
-  - **SocketsHttpHandler Tuning:** gRPC mijozlarida `EnableMultipleHttp2Connections = true` va KeepAlive Ping sozlanib, yuqori yuklamada HTTP/2 stream saturaatsiyasi va kechikishlarning oldi olinadi.
+  - **gRPC Payload & SocketsHttpHandler Tuning:** gRPC server va clientlarida maksimal xabar hajmi `16 MB` ga oshirilgan, response kompressiyasi (`Fastest`) faollashtirilgan, `EnableMultipleHttp2Connections = true` va KeepAlive Ping sozlanib, yuqori yuklamada HTTP/2 stream saturaatsiyasi va kechikishlarning oldi olinadi.
   - Servislararo ichki HTTP/REST chaqiruvlar taqiqlanadi.
 - **Asinxron Hodisalar (RabbitMQ + MassTransit + Transactional Outbox):**
   - Barcha asinxron jarayonlar va bildirishnomalar **RabbitMQ** (MassTransit) orqali event-driven (Pub/Sub) ko'rinishida yuboriladi.
@@ -39,6 +40,7 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
 - `Common` loyihasida markaziy `ITenantContext` va `ICurrentUser` interfeyslari joylashgan bo'lib, ular JWT token claimlaridan joriy ijarachi va foydalanuvchini aniqlaydi.
 - Fon vazifalari, consumerlar va integratsiya jarayonlarida ijarachini vaqtinchalik xavfsiz almashtirish uchun `tenantContext.Change(tenantId, tenantCode)` tokeni (`AsyncLocal`) mavjud.
 - Har bir mikroservisning `DbContext` ida **EF Core Global Query Filter** o'rnatiladi. Filterlar `BaseDbContext` instansiyasiga xavfsiz bog'langan bo'lib, model keshining buzilishi va ijarachilararo ma'lumot sizishining oldini oladi.
+- **Avtomatik Composite Index:** Barcha `ITenantEntity` va `ISoftDeletable` entitiylar uchun `(TenantId, IsDeleted)` B-Tree composite indeksi avtomatik yaratiladi, bu PostgreSQL sequential scan (to'liq jadvalni skanerlash) muammosini 100% bartaraf etadi.
 - Mikroservis `DbContext` lari `AddMicroserviceDbContext<TDbContext>` orqali Scoped lifecycleda ro'yxatdan o'tkaziladi (`AddMicroserviceDbContextPool` multi-tenant xavfsizligi tufayli tavsiya etilmaydi).
 - PostgreSQL da optimist qulflash uchun `xmin` system column concurrency token (`xid`) avtomatik ravishda barcha `BaseEntity` larda konfiguratsiya qilinadi.
 - Domen ob'ektlaridagi `IDomainEvent` lar `BaseEntity.AddDomainEvent` orqali yig'iladi va `AuditSaveChangesInterceptor` orqali avtomatik Transactional Outbox orqali e'lon qilinadi.
@@ -92,6 +94,7 @@ Sahifalash uchun:
 - Dictionary asosida dinamik filtrlash qoidalari (`==`, `<>`, `>=`, `<=`, `between`, `like`, `ilike`, `in`, `nin`).
 - `ConcurrentDictionary` da keshlanuvchi va parametrlashtirilgan EF Core Expression Tree SQL Injectiondan to'liq himoyalaydi va yuqori tezlikni ta'minlaydi.
 - PostgreSQL `EF.Functions.ILike` / `EF.Functions.Like` hamda to'g'ridan-to'g'ri massiv `Contains` metodlaridan samarali foydalaniladi.
+- Read-only so'rovlar uchun `ToReadOnlyListAsync()` va `AsNoTracking()` kengaytmalari orqali EF Core Change Tracker xotira yuklamasi sezilarli darajada qisqartiriladi.
 
 ### 1.10. Audit va Non-Repudiation (AuditSaveChangesInterceptor)
 - Har bir `DbContext.SaveChangesAsync()` chaqirilganda `IAuditableEntity` va `ISoftDeletable` maydonlari avtomatik to'ldiriladi.
