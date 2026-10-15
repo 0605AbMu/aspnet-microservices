@@ -44,6 +44,8 @@ public class TemplateItemService(
 
     public async Task<TemplateItemDto> CreateAsync(CreateTemplateItemRequest request, CancellationToken ct = default)
     {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
+
         var item = new TemplateItem
         {
             TenantId = tenantContext.TenantId,
@@ -55,7 +57,7 @@ public class TemplateItemService(
         dbContext.TemplateItems.Add(item);
         await dbContext.SaveChangesAsync(ct);
 
-        // Publish to transactional outbox with the generated database Id
+        // Publish to transactional outbox with the generated database Id within the active transaction
         await publishEndpoint.Publish(new TemplateItemCreatedIntegrationEvent
         {
             ItemId = item.Id,
@@ -63,6 +65,7 @@ public class TemplateItemService(
         }, ct);
 
         await dbContext.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
 
         logger.LogInfo("TemplateItem with Id {0} created successfully", item.Id);
 
