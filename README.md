@@ -13,15 +13,16 @@ Loyiha hech qanday aniq biznes domeniga (eKadr, CRM, ERP, E-commerce va h.k.) bo
 - **Arxitektura oqimi:** Pragmatic Direct Flow (`Controller -> Service -> DbContext`) — *No CQRS, No Repository Pattern*
 - **Sinxron RPC:** Code-First gRPC (`protobuf-net.Grpc`) + Avtomatik Context/Trace propagation va Deadline Interceptors
 - **Asinxron xabarlar:** RabbitMQ + MassTransit + PostgreSQL EF Core Transactional Outbox/Inbox
-- **Ma'lumotlar bazasi:** PostgreSQL + EF Core 10 (`AddDbContextPool`, Snake_Case Naming, Global Query Filter)
-- **Ko'p ijarachilik (Multi-Tenancy):** `ITenantContext`, `ICurrentUser` claimlar asosida to'liq avtomatlashtirilgan izolyatsiya
+- **Ma'lumotlar bazasi:** PostgreSQL + EF Core 10 (`AddMicroserviceDbContext`, Snake_Case Naming, Global Query Filter, `xmin` Concurrency Token)
+- **Ko'p ijarachilik (Multi-Tenancy):** `ITenantContext`, `ICurrentUser` claimlar asosida to'liq avtomatlashtirilgan izolyatsiya va instance-bound filtrlar
 - **Kesh:** .NET 10 `HybridCache` (L1 In-Memory + L2 Redis) + Single-flight (Lock-on-Read) stampede himoyasi
 - **Taqsimlangan qulflash:** Redis RedLock (`IDistributedLock`)
 - **Fayllar xizmati:** MinIO (S3 API) + Pre-signed URLs + Tenant yo'l izolyatsiyasi
-- **API Gateway:** Ocelot 24 + CORS + Security Headers + Liveness/Readiness Health Checks
+- **API Gateway:** YARP 2.3 (Yet Another Reverse Proxy) + CORS + Security Headers + Liveness/Readiness Health Checks
 - **Xavfsizlik:** JWT Bearer (Asimmetrik / JWKS va Simmetrik) + Session Revocation Middleware (L1 + Redis) + RBAC (`[HasPermission]`)
-- **Himoya vositalari:** Fixed-Window Rate Limiting, HTTP Idempotency-Key deduplication, Brotli/Gzip siqish
-- **Observability:** Serilog (`CallerMethodEnricher` orqali `ServiceName` va `MethodName` avtomatik yoziladi) + OpenTelemetry OTLP Tracing
+- **Himoya vositalari:** Partitioned Rate Limiting (User / IP), HTTP Idempotency-Key deduplication (Redis Distributed Lock bilan), Brotli/Gzip siqish
+- **Resilience:** Polly v8 (`Microsoft.Extensions.Http.Resilience`) — Standard Resilience Handler
+- **Observability:** Serilog (`AppLoggerExtensions` orqali `ServiceName`, `ClassName`, `MethodName` va `LineNumber` to'liq compiler-generated / 0 StackTrace usulda yoziladi) + OpenTelemetry OTLP Tracing
 
 ---
 
@@ -31,8 +32,8 @@ Loyiha hech qanday aniq biznes domeniga (eKadr, CRM, ERP, E-commerce va h.k.) bo
 |---|---|
 | `Common/Microservices.Common` | Barcha shartnomalar, bazaviy modellar (`BaseEntity`, `AggregateRoot`), xatoliklar (`AppException`), dinamik Expression filtrlash, `BaseDbContext`, outbox interceptori. |
 | `WebCore/Microservices.WebCore` | Barcha HTTP/gRPC infratuzilmasi, middleware'lar (CorrelationId, Idempotency, GlobalException, SessionValidation), HybridTenantCache, RedisLock, MinIO, Serilog, gRPC interceptorlar. |
-| `Integration/Microservices.Integration` | Tashqi uchinchi tomon tizimlari bilan integratsiyalar uchun resilient HttpClient bazasi (Polly retry & circuit-breaker). |
-| `Gateway/Microservices.Gateway` | Ocelot asosidagi markaziy API Gateway. |
+| `Integration/Microservices.Integration` | Tashqi uchinchi tomon tizimlari bilan integratsiyalar uchun resilient HttpClient bazasi (Polly v8 standard resilience handler). |
+| `Gateway/Microservices.Gateway` | YARP (Yet Another Reverse Proxy) asosidagi zamonaviy va yuqori unumdor API Gateway. |
 | `Services/Template/` | Namunaviy bo'sh mikroservis (`Template.Contracts` va `Template.Service`). |
 | `scripts/new-service.sh` | 1 soniyada yangi mikroservis generatsiya qiluvchi avtomatlashtirish skripti. |
 
@@ -84,7 +85,7 @@ Yangi mikroservis yaratish uchun tayyor generator skriptidan foydalaning:
 
 Ushbu skript avtomatik ravishda:
 1. `Services/Billing/Billing.Contracts` loyihasini (DTOs, gRPC interfeys, hodisalar va istisnolar bilan) yaratadi.
-2. `Services/Billing/Billing.Service` loyihasini (`DbContextPool`, `MassTransit Outbox`, `gRPC Code-First`, `Controller`, `Service`, `Program.cs`, `appsettings.json`, `Dockerfile` bilan) yaratadi.
+2. `Services/Billing/Billing.Service` loyihasini (`AddMicroserviceDbContext`, `MassTransit Outbox`, `gRPC Code-First`, `Controller`, `Service`, `Program.cs`, `appsettings.json`, `Dockerfile` bilan) yaratadi.
 3. Yangi loyihalarni `Microservices.slnx` ga avtomatik qo'shadi.
 
 Siz faqat o'z domen modullaringizni qo'shib, biznes mantiqni yozishni boshlaysiz!

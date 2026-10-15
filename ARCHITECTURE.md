@@ -33,7 +33,9 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
 
 ### 1.4. Ko'p Ijarachilik va Ma'lumotlar Izolyatsiyasi (Multi-Tenancy)
 - `Common` loyihasida markaziy `ITenantContext` va `ICurrentUser` interfeyslari joylashgan bo'lib, ular JWT token claimlaridan joriy ijarachi va foydalanuvchini aniqlaydi.
-- Har bir mikroservisning `DbContext` ida **EF Core Global Query Filter** o'rnatiladi. Dasturchi qo'lda har safar filter yozishi shart emas.
+- Har bir mikroservisning `DbContext` ida **EF Core Global Query Filter** o'rnatiladi. Filterlar `BaseDbContext` instansiyasiga xavfsiz bog'langan bo'lib, model keshining buzilishi va ijarachilararo ma'lumot sizishining oldini oladi.
+- Mikroservis `DbContext` lari `AddMicroserviceDbContext<TDbContext>` orqali Scoped lifecycleda ro'yxatdan o'tkaziladi (`AddMicroserviceDbContextPool` multi-tenant xavfsizligi tufayli tavsiya etilmaydi).
+- PostgreSQL da optimist qulflash uchun `xmin` system column concurrency token (`xid`) avtomatik ravishda barcha `BaseEntity` larda konfiguratsiya qilinadi.
 - Ierarxik tuzilma qo'llab-quvvatlanadi: `Tenant` -> `District` -> `Region` -> `Global`.
 - Fon vazifalari yoki umumiy hisobotlar uchun `using (tenantContext.DisableTenantFilter())` orqali faqat ijarachi filtrini vaqtincha ochish mumkin (`IsDeleted = false` soft-delete filtri esa doim faol qoladi).
 
@@ -78,18 +80,20 @@ Sahifalash uchun:
 ### 1.9. Dinamik Filtrlash, Saralash va Sahifalash (QueryableFilterExtensions)
 - Dictionary asosida dinamik filtrlash qoidalari (`==`, `<>`, `>=`, `<=`, `between`, `like`, `ilike`, `in`, `nin`).
 - `ConcurrentDictionary` da keshlanuvchi va parametrlashtirilgan EF Core Expression Tree SQL Injectiondan to'liq himoyalaydi va yuqori tezlikni ta'minlaydi.
+- PostgreSQL `EF.Functions.ILike` / `EF.Functions.Like` hamda to'g'ridan-to'g'ri massiv `Contains` metodlaridan samarali foydalaniladi.
 
 ### 1.10. Audit va Non-Repudiation (AuditSaveChangesInterceptor)
 - Har bir `DbContext.SaveChangesAsync()` chaqirilganda `IAuditableEntity` va `ISoftDeletable` maydonlari avtomatik to'ldiriladi.
 - O'zgarishlar (`OldValues`, `NewValues`, `UserId`, `ClientIP`) tranzaksiya bazaga commit bo'lgach (`SavedChangesAsync`), avtomatik tarzda **MassTransit Transactional Outbox** orqali `EntityAuditedEvent` sifatida navbatga chiqariladi (asosiy jarayonga nol kechikish ta'siri bilan).
 
 ### 1.11. Xavfsizlik, Idempotentlik va Himoya
-- **HTTP Idempotency-Key Middleware:** Takroriy POST/PUT so'rovlarida Redis kesh orqali dublikat yaratilishining oldini oladi.
+- **HTTP Idempotency-Key Middleware:** Takroriy POST/PUT so'rovlarida Redis `IDistributedLock` orqali parallel dublikat chaqiruvlarni bloklaydi va faqat muvaffaqiyatli ($2xx$) javoblarni keshlaydi.
 - **Session / Token Revocation Middleware:** L1 In-Memory (20 soniya) + L2 Redis orqali yaroqsiz qilingan sessiyalarni bir zumda aniqlab, `401 Unauthorized ("token_revoked")` qaytaradi.
-- **Rate Limiting:** IP va foydalanuvchi darajasida tezlikni cheklash (Fixed Window Limiter).
-- **Siqish (Compression):** Brotli (asosiy) + Gzip (fallback) orqali tarmoq trafigini siqish.
+- **Taqsimlangan Rate Limiting:** `PartitionedRateLimiter` orqali har bir foydalanuvchi (`user:{userId}`) yoki IP (`ip:{clientIp}`) bo'yicha alohida darcha (Sliding/Fixed Window) asosida himoyalaydi.
+- **Resilience:** Polly v8 (`Microsoft.Extensions.Http.Resilience`) asosidagi `AddStandardResilienceHandler` orqali qayta urinish, timeout va circuit-breaker himoyasi.
+- **Siqish (Compression):** Brotli (asosiy) + Gzip (fallback) orqali tarmoq trafigini siqish (gRPC binary oqimlarini buzmagan holda).
 - **OpenTelemetry:** OTLP protokoli orqali so'rovlar zanjirini kuzatish (distributed tracing).
-- **Serilog Logging:** `CallerMethodEnricher` yordamida log yozgan servis nomi (`ServiceName`) va metod nomi (`MethodName`) avtomatik muhrlanadi.
+- **Serilog Logging:** `AppLoggerExtensions` (`LogInfo`, `LogWarn`, `LogError`, `LogDebug`) orqali log yozgan servis nomi (`ServiceName`), sinf nomi (`ClassName`), metod nomi (`MethodName`) va manba qatori (`LineNumber`) to'liq kompilyatsiya vaqtida (Compiler-Generated, 0 StackTrace) `[ServiceName] [ClassName.MethodName:LineNumber]` formatida muhrlanadi.
 
 ---
 
@@ -130,10 +134,10 @@ aspnet-microservices/
 │   ├── OpenApi/                     # BearerSecuritySchemeTransformer
 │   ├── Security/                    # HasPermissionAttribute, PermissionAuthorizationHandler
 │   └── Storage/                     # MinioFileStorageService
-├── Integration/                     # Microservices.Integration: Tashqi tizimlar mijozi bazasi (Polly, dual-mode)
+├── Integration/                     # Microservices.Integration: Tashqi tizimlar mijozi bazasi (Polly v8, dual-mode)
 │   └── Shared/                      # BaseIntegrationClient, BaseIntegrationOptions, IntegrationPolicies
-├── Gateway/                         # Microservices.Gateway: Ocelot API Gateway
-│   └── Microservices.Gateway/       # Program.cs, ocelot.json, Dockerfile
+├── Gateway/                         # Microservices.Gateway: YARP (Reverse Proxy) API Gateway
+│   └── Microservices.Gateway/       # Program.cs, appsettings.json, Dockerfile
 └── Services/                        # Barcha mikroservislar
     └── Template/                    # Generic namunaviy mikroservis
         ├── Template.Contracts/      # DTOs, gRPC Interfaces, Events, Exceptions
