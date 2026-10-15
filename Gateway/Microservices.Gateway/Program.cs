@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using Microservices.Common.Constants;
 using Microsoft.AspNetCore.RateLimiting;
 using Microservices.WebCore.Extensions;
 using Microservices.WebCore.Middleware;
@@ -8,15 +10,32 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMicroserviceSerilog(builder.Configuration, "microservices-gateway");
 builder.Services.AddHealthChecks();
 
-// Edge Rate Limiting
+// Edge Rate Limiting (Partitioned per Client IP to prevent single-client DoS)
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter("gateway-limiter", opt =>
+    options.AddPolicy("gateway-limiter", httpContext =>
     {
-        opt.PermitLimit = 200;
-        opt.Window = TimeSpan.FromSeconds(1);
-        opt.QueueLimit = 50;
+        var clientIp = httpContext.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(clientIp))
+        {
+            clientIp = clientIp.Split(',')[0].Trim();
+        }
+        else
+        {
+            clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-ip";
+        }
+
+        return RateLimitPartition.GetSlidingWindowLimiter(
+            clientIp,
+            _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit = 100,
+                Window = TimeSpan.FromSeconds(1),
+                SegmentsPerWindow = 2,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 20
+            });
     });
 });
 
