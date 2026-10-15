@@ -127,12 +127,15 @@ public class IdempotencyMiddleware(
         {
             await next(context);
 
-            memoryStream.Position = 0;
-            var responseBody = await new StreamReader(memoryStream, Encoding.UTF8).ReadToEndAsync();
+            // Only cache successful 2xx responses that are JSON and within safe size (< 1 MB) to protect LOH
+            var isJson = context.Response.ContentType?.Contains("application/json", StringComparison.OrdinalIgnoreCase) ?? true;
+            var isCacheableSize = memoryStream.Length <= 1024 * 1024;
 
-            // Only cache successful 2xx responses (allow clients to retry after errors)
-            if (context.Response.StatusCode is >= 200 and < 300)
+            if (context.Response.StatusCode is >= 200 and < 300 && isJson && isCacheableSize)
             {
+                memoryStream.Position = 0;
+                var responseBody = await new StreamReader(memoryStream, Encoding.UTF8).ReadToEndAsync();
+
                 var cachedObj = new CachedHttpResponse
                 {
                     StatusCode = context.Response.StatusCode,

@@ -77,6 +77,15 @@ public class GrpcClientContextInterceptor(
         var deadline = context.Options.Deadline ?? DateTime.UtcNow.AddSeconds(10);
         var newOptions = context.Options.WithHeaders(headers).WithDeadline(deadline);
 
+        if (httpContext is not null && httpContext.RequestAborted.CanBeCanceled)
+        {
+            var cancellationToken = context.Options.CancellationToken.CanBeCanceled
+                ? CancellationTokenSource.CreateLinkedTokenSource(context.Options.CancellationToken, httpContext.RequestAborted).Token
+                : httpContext.RequestAborted;
+
+            newOptions = newOptions.WithCancellationToken(cancellationToken);
+        }
+
         return new ClientInterceptorContext<TRequest, TResponse>(context.Method, context.Host, newOptions);
     }
 

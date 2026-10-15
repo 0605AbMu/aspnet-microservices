@@ -38,7 +38,8 @@ public class RedisDistributedLock(
 
             try
             {
-                await Task.Delay(50, cancellationToken);
+                var jitterMs = Random.Shared.Next(35, 65);
+                await Task.Delay(jitterMs, cancellationToken);
             }
             catch (OperationCanceledException)
             {
