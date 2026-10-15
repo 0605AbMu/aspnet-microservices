@@ -19,5 +19,4 @@ public interface ITenantEntity
     long? TenantId { get; set; }
     long? RegionId { get; set; }
     long? DistrictId { get; set; }
-    long? InstitutionId { get; set; }
 }

@@ -21,12 +21,10 @@ public class TenantContextHttpContext(IHttpContextAccessor httpContextAccessor) 
     {
         get
         {
-            var raw = User?.FindFirstValue(AppClaimTypes.TenantId) ?? User?.FindFirstValue(AppClaimTypes.InstitutionId);
+            var raw = User?.FindFirstValue(AppClaimTypes.TenantId);
             return long.TryParse(raw, out var id) ? id : null;
         }
     }
-
-    public long? InstitutionId => TenantId;
 
     public long? DistrictId
     {

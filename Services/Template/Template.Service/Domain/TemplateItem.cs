@@ -8,7 +8,6 @@ public class TemplateItem : AggregateRoot<long>, ITenantEntity
     public long? TenantId { get; set; }
     public long? RegionId { get; set; }
     public long? DistrictId { get; set; }
-    public long? InstitutionId { get; set; }
 
     [MaxLength(200)]
     public string Title { get; set; } = string.Empty;

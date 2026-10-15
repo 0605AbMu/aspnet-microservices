@@ -11,12 +11,11 @@ public enum TenantScope
 public interface ITenantContext
 {
     long? TenantId { get; }
-    long? InstitutionId { get; }
     long? DistrictId { get; }
     long? RegionId { get; }
     TenantScope Scope { get; }
 
-    bool HasTenant => (TenantId.HasValue && TenantId.Value > 0) || (InstitutionId.HasValue && InstitutionId.Value > 0);
+    bool HasTenant => TenantId.HasValue && TenantId.Value > 0;
     bool IsCrossTenant => Scope >= TenantScope.District || IsTenantFilterDisabled;
 
     /// <summary>
@@ -31,5 +30,5 @@ public interface ITenantContext
     IDisposable DisableTenantFilter();
 
     long ResolveTenantId(long? requestedTenantId = null) =>
-        requestedTenantId is > 0 ? requestedTenantId.Value : (TenantId ?? InstitutionId ?? 0);
+        requestedTenantId is > 0 ? requestedTenantId.Value : (TenantId ?? 0);
 }
