@@ -24,6 +24,29 @@ public static class ServiceInfrastructureExtensions
     /// Uses scoped DbContext lifetime to guarantee safe multi-tenant context injection without pool leakage.
     /// Also registers an automatic database readiness health check.
     /// </summary>
+    /// <summary>
+    /// Registers a tuned, singleton NpgsqlDataSource for statement auto-preparation,
+    /// dynamic multiplexing, and optimal connection pooling.
+    /// </summary>
+    public static IServiceCollection AddMicroserviceNpgsqlDataSource(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        string connectionName = ConnectionNames.Default,
+        Action<Npgsql.NpgsqlDataSourceBuilder>? configureBuilder = null)
+    {
+        var connectionString = configuration.GetConnectionString(connectionName)
+            ?? throw new InvalidOperationException($"Connection string '{connectionName}' is not configured.");
+
+        services.AddSingleton(sp =>
+        {
+            var builder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+            configureBuilder?.Invoke(builder);
+            return builder.Build();
+        });
+
+        return services;
+    }
+
     public static IServiceCollection AddMicroserviceDbContext<TDbContext>(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -39,14 +62,28 @@ public static class ServiceInfrastructureExtensions
         services.AddDbContext<TDbContext>((sp, options) =>
         {
             var auditInterceptor = sp.GetRequiredService<AuditSaveChangesInterceptor>();
+            var dataSource = sp.GetService<Npgsql.NpgsqlDataSource>();
 
-            options
-                .UseNpgsql(connectionString, npgsql =>
+            if (dataSource is not null)
+            {
+                options.UseNpgsql(dataSource, npgsql =>
                 {
                     npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
                     npgsql.CommandTimeout(commandTimeoutSeconds);
                     npgsql.MigrationsAssembly(typeof(TDbContext).Assembly.FullName);
-                })
+                });
+            }
+            else
+            {
+                options.UseNpgsql(connectionString, npgsql =>
+                {
+                    npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
+                    npgsql.CommandTimeout(commandTimeoutSeconds);
+                    npgsql.MigrationsAssembly(typeof(TDbContext).Assembly.FullName);
+                });
+            }
+
+            options
                 .UseSnakeCaseNamingConvention()
                 .AddInterceptors(auditInterceptor);
         });
@@ -98,6 +135,15 @@ public static class ServiceInfrastructureExtensions
                     h.Password(rabbitOptions.Password);
                 });
 
+                if (rabbitOptions.PrefetchCount.HasValue)
+                {
+                    cfg.PrefetchCount = rabbitOptions.PrefetchCount.Value;
+                }
+                if (rabbitOptions.ConcurrentMessageLimit.HasValue)
+                {
+                    cfg.ConcurrentMessageLimit = rabbitOptions.ConcurrentMessageLimit.Value;
+                }
+
                 // Attach automatic multi-tenancy context propagation filters
                 cfg.UsePublishFilter(typeof(MassTransitTenantPublishFilter<>), context);
                 cfg.UseSendFilter(typeof(MassTransitTenantSendFilter<>), context);
@@ -133,7 +179,8 @@ public static class ServiceInfrastructureExtensions
     }
 
     /// <summary>
-    /// Registers a Code-First gRPC client with automatic context &amp; deadline propagation.
+    /// Registers a Code-First gRPC client with automatic context &amp; deadline propagation,
+    /// and tuned SocketsHttpHandler for HTTP/2 multi-stream connection pooling.
     /// </summary>
     public static IHttpClientBuilder AddMicroserviceGrpcClient<TClient>(
         this IServiceCollection services,
@@ -142,6 +189,13 @@ public static class ServiceInfrastructureExtensions
     {
         return services
             .AddCodeFirstGrpcClient<TClient>(o => o.Address = new Uri(address))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                EnableMultipleHttp2Connections = true,
+                KeepAlivePingDelay = TimeSpan.FromSeconds(30),
+                KeepAlivePingTimeout = TimeSpan.FromSeconds(5),
+                PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1)
+            })
             .AddInterceptor<GrpcClientContextInterceptor>();
     }
 }

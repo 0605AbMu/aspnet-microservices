@@ -43,8 +43,9 @@
     <PackageReference Include="EFCore.NamingConventions" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
 
-    <!-- Object Storage (MinIO) -->
+    <!-- Object Storage (MinIO) & Stream Pooling -->
     <PackageReference Include="Minio" />
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
 
     <!-- Logging -->
     <PackageReference Include="Serilog.AspNetCore" />

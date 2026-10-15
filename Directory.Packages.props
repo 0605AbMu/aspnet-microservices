@@ -72,8 +72,9 @@
     <PackageVersion Include="Microsoft.Extensions.Http.Polly" Version="10.0.4" />
     <PackageVersion Include="Polly.Extensions.Http" Version="3.0.0" />
 
-    <!-- MinIO Object Storage -->
+    <!-- MinIO Object Storage & Stream Pooling -->
     <PackageVersion Include="Minio" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="2.2.1" />
 
     <!-- Redis & Distributed Lock -->
     <PackageVersion Include="StackExchange.Redis" Version="3.3.1" />

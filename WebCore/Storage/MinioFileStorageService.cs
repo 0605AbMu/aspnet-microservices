@@ -5,17 +5,23 @@ using Microsoft.Extensions.Logging;
 using Minio;
 using Minio.DataModel.Args;
 
+using Microsoft.IO;
+
 namespace Microservices.WebCore.Storage;
 
 /// <summary>
-/// Shared MinIO Object Storage implementation using pooled/singleton IMinioClient.
+/// Shared MinIO Object Storage implementation using pooled/singleton IMinioClient
+/// and RecyclableMemoryStreamManager for zero-allocation stream buffers.
 /// </summary>
 public class MinioFileStorageService(
     IMinioClient minioClient,
     IConfiguration configuration,
-    ILogger<MinioFileStorageService> logger) : IFileStorageService
+    ILogger<MinioFileStorageService> logger,
+    RecyclableMemoryStreamManager? memoryStreamManager = null) : IFileStorageService
 {
     private static readonly ConcurrentDictionary<string, bool> EnsuredBuckets = new();
+    private static readonly RecyclableMemoryStreamManager FallbackStreamManager = new();
+    private readonly RecyclableMemoryStreamManager _streamManager = memoryStreamManager ?? FallbackStreamManager;
     private readonly string _endpoint = configuration["Minio:Endpoint"] ?? "localhost:9000";
 
     public string BuildObjectKey(long tenantId, string entityName, Guid fileGuid, string extension)
@@ -32,7 +38,7 @@ public class MinioFileStorageService(
         string contentType = "application/octet-stream",
         CancellationToken ct = default)
     {
-        using var stream = new MemoryStream(fileBytes);
+        using var stream = _streamManager.GetStream(fileBytes);
         return await UploadStreamAsync(bucketName, objectKey, stream, fileBytes.Length, contentType, ct);
     }
 

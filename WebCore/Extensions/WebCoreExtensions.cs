@@ -18,6 +18,7 @@ using Microservices.WebCore.Storage;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
@@ -64,6 +65,7 @@ public static class WebCoreExtensions
                 .Build();
         });
         services.AddScoped<IFileStorageService, MinioFileStorageService>();
+        services.AddSingleton<Microsoft.IO.RecyclableMemoryStreamManager>();
 
         // --- Audit & Outbox Publisher ---
         services.AddScoped<IAuditOutboxPublisher, MassTransitAuditPublisher>();
@@ -182,11 +184,37 @@ public static class WebCoreExtensions
 
         app.MapHealthChecks("/health/ready", new HealthCheckOptions
         {
-            Predicate = _ => true
+            Predicate = _ => true,
+            ResponseWriter = WriteHealthCheckJsonResponse
         }).AllowAnonymous();
 
-        app.MapHealthChecks("/health").AllowAnonymous();
+        app.MapHealthChecks("/health", new HealthCheckOptions
+        {
+            ResponseWriter = WriteHealthCheckJsonResponse
+        }).AllowAnonymous();
+
         return app;
+    }
+
+    private static async Task WriteHealthCheckJsonResponse(HttpContext context, HealthReport report)
+    {
+        context.Response.ContentType = "application/json; charset=utf-8";
+        var payload = new
+        {
+            status = report.Status.ToString(),
+            totalDurationMs = Math.Round(report.TotalDuration.TotalMilliseconds, 2),
+            entries = report.Entries.ToDictionary(
+                e => e.Key,
+                e => new
+                {
+                    status = e.Value.Status.ToString(),
+                    durationMs = Math.Round(e.Value.Duration.TotalMilliseconds, 2),
+                    description = e.Value.Description,
+                    error = e.Value.Exception?.Message
+                })
+        };
+
+        await context.Response.WriteAsJsonAsync(payload);
     }
 
     /// <summary>
