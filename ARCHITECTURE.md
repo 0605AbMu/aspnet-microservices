@@ -30,25 +30,31 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
   - Barcha asinxron jarayonlar va bildirishnomalar **RabbitMQ** (MassTransit) orqali event-driven (Pub/Sub) ko'rinishida yuboriladi.
   - Ma'lumotlar yo'qolishining oldini olish uchun **PostgreSQL EF Core Transactional Outbox/Inbox** patterni ishlatiladi.
   - Xabarlar uchun eksponentsial qayta urinish (exponential retry: 1s, 2s, 4s...) o'rnatilgan.
+  - **Multi-Tenancy Context Propagation:** `MassTransitTenantPublishFilter`, `MassTransitTenantSendFilter` va `MassTransitTenantConsumeFilter` orqali `TenantId` va `TenantCode` avtomatik ravishda RabbitMQ sarlavhalari (headers) orqali uzatiladi va qabul qiluvchi consumerda tiklanadi.
 
 ### 1.4. Ko'p Ijarachilik va Ma'lumotlar Izolyatsiyasi (Multi-Tenancy)
 - `Common` loyihasida markaziy `ITenantContext` va `ICurrentUser` interfeyslari joylashgan bo'lib, ular JWT token claimlaridan joriy ijarachi va foydalanuvchini aniqlaydi.
+- Fon vazifalari, consumerlar va integratsiya jarayonlarida ijarachini vaqtinchalik xavfsiz almashtirish uchun `tenantContext.Change(tenantId, tenantCode)` tokeni (`AsyncLocal`) mavjud.
 - Har bir mikroservisning `DbContext` ida **EF Core Global Query Filter** o'rnatiladi. Filterlar `BaseDbContext` instansiyasiga xavfsiz bog'langan bo'lib, model keshining buzilishi va ijarachilararo ma'lumot sizishining oldini oladi.
 - Mikroservis `DbContext` lari `AddMicroserviceDbContext<TDbContext>` orqali Scoped lifecycleda ro'yxatdan o'tkaziladi (`AddMicroserviceDbContextPool` multi-tenant xavfsizligi tufayli tavsiya etilmaydi).
 - PostgreSQL da optimist qulflash uchun `xmin` system column concurrency token (`xid`) avtomatik ravishda barcha `BaseEntity` larda konfiguratsiya qilinadi.
+- Domen ob'ektlaridagi `IDomainEvent` lar `BaseEntity.AddDomainEvent` orqali yig'iladi va `AuditSaveChangesInterceptor` orqali avtomatik Transactional Outbox orqali e'lon qilinadi.
 - Ierarxik tuzilma qo'llab-quvvatlanadi: `Tenant` -> `District` -> `Region` -> `Global`.
 - Fon vazifalari yoki umumiy hisobotlar uchun `using (tenantContext.DisableTenantFilter())` orqali faqat ijarachi filtrini vaqtincha ochish mumkin (`IsDeleted = false` soft-delete filtri esa doim faol qoladi).
 
 ### 1.5. Kesh Arxitekturasi (HybridCache: L1 + L2)
 - .NET 10 rasmiy **HybridCache** (L1 In-Memory + L2 Redis) qo'llaniladi.
 - `ITenantCache` wrapperi orqali kesh kalitlari avtomatik ravishda tenant prefiksi bilan nomlanadi (`tenant:{id}:{service}:{key}`), bu tenantlararo kesh aralashuvini 100% bartaraf etadi.
+- Teglar (`tags`) orqali bir vaqtning o'zida bir nechta bog'liq kesh yozuvlarini bekor qilish (`RemoveByTagAsync`) va to'g'ridan-to'g'ri qiymat yozish (`SetAsync`) qo'llab-quvvatlanadi.
 - `HybridCache.GetOrCreateAsync` ichki **Lock-on-Read (Single-Flight)** mexanizmi orqali Cache Stampede (Dog-Piling) dan himoyalaydi.
 
-### 1.6. Taqsimlangan Qulflash (Distributed Lock - RedLock)
+### 1.6. Taqsimlangan Qulflash (Distributed Lock - RedLock & Watchdog)
 - Redis asosidagi `IDistributedLock` parallel to'qnashuvlar (race condition) va bir vaqtning o'zida bir xil resursni o'zgartirishdan himoya qiladi.
+- **Heartbeat/Watchdog:** Uzoq davom etadigan operatsiyalar paytida qulf muddatidan oldin tugab qolmasligi uchun `PeriodicTimer` yordamida avtomatik uzaytirish (heartbeat auto-renewal) amalga oshiriladi.
 
 ### 1.7. Fayllar bilan Ishlash (MinIO / S3 Object Storage)
 - Fayllar server diskiga emas, to'liq **MinIO (S3 API)** ga yuklanadi.
+- Katta fayllar bilan xotira yukini kamaytirish uchun to'g'ridan-to'g'ri oqim (`UploadStreamAsync`, `DownloadStreamAsync`) qo'llaniladi (Large Object Heap LOH bosimi nolga tushirilgan).
 - Xavfsizlik uchun **Pre-signed URL** lardan foydalaniladi (5-15 daqiqa TTL).
 - Fayllar yo'li tenant izolyatsiyasida saqlanadi: `{tenant_id}/{entity_name}/{year}/{file_guid}.{ext}`.
 
@@ -89,10 +95,11 @@ Sahifalash uchun:
 ### 1.11. Xavfsizlik, Idempotentlik va Himoya
 - **HTTP Idempotency-Key Middleware:** Takroriy POST/PUT so'rovlarida Redis `IDistributedLock` orqali parallel dublikat chaqiruvlarni bloklaydi va faqat muvaffaqiyatli ($2xx$) javoblarni keshlaydi.
 - **Session / Token Revocation Middleware:** L1 In-Memory (20 soniya) + L2 Redis orqali yaroqsiz qilingan sessiyalarni bir zumda aniqlab, `401 Unauthorized ("token_revoked")` qaytaradi.
-- **Taqsimlangan Rate Limiting:** `PartitionedRateLimiter` orqali har bir foydalanuvchi (`user:{userId}`) yoki IP (`ip:{clientIp}`) bo'yicha alohida darcha (Sliding/Fixed Window) asosida himoyalaydi.
+- **Taqsimlangan Rate Limiting:** Gateway va WebCore qatlamlarida `PartitionedRateLimiter` orqali foydalanuvchi (`user:{userId}`) yoki IP (`ip:{clientIp}`) bo'yicha alohida darcha asosida himoyalaydi.
 - **Resilience:** Polly v8 (`Microsoft.Extensions.Http.Resilience`) asosidagi `AddStandardResilienceHandler` orqali qayta urinish, timeout va circuit-breaker himoyasi.
+- **Health Checks & Monitoring:** `/health/live`, `/health/ready` (DB va Redis tayyorligi), hamda YARP Gateway Active Health Check bilan avtomatik failover.
 - **Siqish (Compression):** Brotli (asosiy) + Gzip (fallback) orqali tarmoq trafigini siqish (gRPC binary oqimlarini buzmagan holda).
-- **OpenTelemetry:** OTLP protokoli orqali so'rovlar zanjirini kuzatish (distributed tracing).
+- **OpenTelemetry:** OTLP protokoli orqali so'rovlar zanjirini kuzatish (MassTransit, Npgsql, HttpClient, AspNetCore tracing va Runtime/Process metrics).
 - **Serilog Logging:** `AppLoggerExtensions` (`LogInfo`, `LogWarn`, `LogError`, `LogDebug`) orqali log yozgan servis nomi (`ServiceName`), sinf nomi (`ClassName`), metod nomi (`MethodName`) va manba qatori (`LineNumber`) to'liq kompilyatsiya vaqtida (Compiler-Generated, 0 StackTrace) `[ServiceName] [ClassName.MethodName:LineNumber]` formatida muhrlanadi.
 
 ---
@@ -108,7 +115,7 @@ aspnet-microservices/
 │   ├── Cache/                       # ITenantCache
 │   ├── Constants/                   # ConnectionNames, AppClaimTypes, AppHeaderNames
 │   ├── Context/                     # ITenantContext, ICurrentUser, SystemCurrentUser
-│   ├── Domain/                      # BaseEntity, AggregateRoot, ValueObject, IAuditableEntity, ISoftDeletable
+│   ├── Domain/                      # BaseEntity, AggregateRoot, IDomainEvent, IAuditableEntity, ISoftDeletable
 │   ├── Exceptions/                  # AppException, ErrorType, NotFoundException, ConflictException, etc.
 │   ├── Filtering/                   # FilterRule, FilterCondition, QueryableFilterExtensions
 │   ├── Jobs/                        # IBackgroundJob
@@ -121,19 +128,20 @@ aspnet-microservices/
 ├── WebCore/                         # Microservices.WebCore: Barcha HTTP, gRPC va infra middleware/extensionlar
 │   ├── Audit/                       # MassTransitAuditPublisher
 │   ├── Cache/                       # HybridTenantCache
-│   ├── Context/                     # CurrentUserHttpContext, TenantContextHttpContext
+│   ├── Context/                     # CurrentUserHttpContext, TenantContextHttpContext, MassTransitTenantFilters
 │   ├── Controllers/                 # BaseApiController
-│   ├── Extensions/                  # ServiceInfrastructureExtensions, WebCoreExtensions, Compression, Jwks...
+│   ├── Extensions/                  # ServiceInfrastructureExtensions, WebCoreExtensions, Compression, OpenTelemetry...
+│   ├── HealthChecks/                # RedisHealthCheck
 │   ├── Interceptors/                # GrpcClientContextInterceptor, GrpcServerContextInterceptor, GrpcException...
-│   ├── Lock/                        # RedisDistributedLock
+│   ├── Lock/                        # RedisDistributedLock (Watchdog auto-renewal)
 │   ├── Logging/                     # CallerMethodEnricher, AppLogContext, AppLoggerExtensions
 │   ├── Middleware/                  # CorrelationIdMiddleware, GlobalExceptionMiddleware, Idempotency...
 │   ├── OpenApi/                     # BearerSecuritySchemeTransformer
 │   ├── Security/                    # HasPermissionAttribute, PermissionAuthorizationHandler
-│   └── Storage/                     # MinioFileStorageService
+│   └── Storage/                     # MinioFileStorageService (Stream-based)
 ├── Integration/                     # Microservices.Integration: Tashqi tizimlar mijozi bazasi (Polly v8, dual-mode)
 │   └── Shared/                      # BaseIntegrationClient, BaseIntegrationOptions, IntegrationPolicies
-├── Gateway/                         # Microservices.Gateway: YARP (Reverse Proxy) API Gateway
+├── Gateway/                         # Microservices.Gateway: YARP (Reverse Proxy) API Gateway (Rate Limiting, Health Checks)
 │   └── Microservices.Gateway/       # Program.cs, appsettings.json, Dockerfile
 └── Services/                        # Barcha mikroservislar
     └── Template/                    # Generic namunaviy mikroservis
