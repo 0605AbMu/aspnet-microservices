@@ -15,121 +15,81 @@ public class CurrentUserHttpContext(IHttpContextAccessor httpContextAccessor) : 
     private HttpContext? HttpContext => httpContextAccessor.HttpContext;
     private ClaimsPrincipal? User => HttpContext?.User;
 
-    private long? _userId;
-    private bool _userIdResolved;
     public long? UserId
     {
         get
         {
-            if (!_userIdResolved)
+            if (field is null && User?.Identity?.IsAuthenticated is true)
             {
-                var raw = User?.FindFirstValue(AppClaimTypes.Sub) ?? User?.FindFirstValue(AppClaimTypes.UserId);
-                _userId = long.TryParse(raw, out var id) ? id : null;
-                _userIdResolved = true;
+                var raw = User.FindFirstValue(AppClaimTypes.Sub) ?? User.FindFirstValue(AppClaimTypes.UserId);
+                field = long.TryParse(raw, out var id) ? id : null;
             }
-            return _userId;
+            return field;
         }
     }
 
-    private string? _username;
-    private bool _usernameResolved;
     public string? Username
     {
         get
         {
-            if (!_usernameResolved)
+            if (field is null && User?.Identity?.IsAuthenticated is true)
             {
-                _username = User?.FindFirstValue(AppClaimTypes.Username) ?? User?.FindFirstValue(ClaimTypes.Name);
-                _usernameResolved = true;
+                field = User.FindFirstValue(AppClaimTypes.Username) ?? User.FindFirstValue(ClaimTypes.Name);
             }
-            return _username;
+            return field;
         }
     }
 
-    private string? _sessionId;
-    private bool _sessionIdResolved;
     public string? SessionId
     {
         get
         {
-            if (!_sessionIdResolved)
+            if (field is null && User?.Identity?.IsAuthenticated is true)
             {
-                _sessionId = User?.FindFirstValue(AppClaimTypes.SessionId);
-                _sessionIdResolved = true;
+                field = User.FindFirstValue(AppClaimTypes.SessionId);
             }
-            return _sessionId;
+            return field;
         }
     }
 
-    private string? _securityStamp;
-    private bool _securityStampResolved;
     public string? SecurityStamp
     {
         get
         {
-            if (!_securityStampResolved)
+            if (field is null && User?.Identity?.IsAuthenticated is true)
             {
-                _securityStamp = User?.FindFirstValue(AppClaimTypes.SecurityStamp);
-                _securityStampResolved = true;
+                field = User.FindFirstValue(AppClaimTypes.SecurityStamp);
             }
-            return _securityStamp;
+            return field;
         }
     }
 
-    private string? _clientIp;
-    private bool _clientIpResolved;
     public string? ClientIp
     {
-        get
-        {
-            if (!_clientIpResolved)
-            {
-                _clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString()
-                    ?? HttpContext?.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault()?.Split(',')[0].Trim();
-                _clientIpResolved = true;
-            }
-            return _clientIp;
-        }
+        get => field ??= HttpContext?.Connection.RemoteIpAddress?.ToString()
+            ?? HttpContext?.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault()?.Split(',')[0].Trim();
     }
 
-    private string? _userAgent;
-    private bool _userAgentResolved;
     public string? UserAgent
     {
-        get
-        {
-            if (!_userAgentResolved)
-            {
-                _userAgent = HttpContext?.Request.Headers[AppHeaderNames.UserAgent].ToString();
-                _userAgentResolved = true;
-            }
-            return _userAgent;
-        }
+        get => field ??= HttpContext?.Request.Headers[AppHeaderNames.UserAgent].ToString();
     }
 
-    private string? _correlationId;
-    private bool _correlationIdResolved;
     public string? CorrelationId
     {
-        get
-        {
-            if (!_correlationIdResolved)
-            {
-                _correlationId = HttpContext?.ResolveCorrelationId();
-                _correlationIdResolved = true;
-            }
-            return _correlationId;
-        }
+        get => field ??= HttpContext?.ResolveCorrelationId();
     }
 
-    private IReadOnlyList<string>? _roles;
-    public IReadOnlyList<string> Roles => _roles ??= 
-        (User?.FindAll(AppClaimTypes.Role).Select(c => c.Value).ToList()
-        ?? User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList() ?? []);
+    public IReadOnlyList<string> Roles
+    {
+        get => field ??= (User?.FindAll(AppClaimTypes.Role).Select(c => c.Value).ToList()
+            ?? User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList() ?? []);
+    }
 
-    private IReadOnlyList<string>? _permissions;
-    public IReadOnlyList<string> Permissions => _permissions ??=
-        (User?.FindAll(AppClaimTypes.Permission).Select(c => c.Value).ToList() ?? []);
+    public IReadOnlyList<string> Permissions
+    {
+        get => field ??= (User?.FindAll(AppClaimTypes.Permission).Select(c => c.Value).ToList() ?? []);
+    }
 
     private HashSet<string>? _permissionSet;
 
