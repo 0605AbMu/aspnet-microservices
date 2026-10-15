@@ -101,11 +101,12 @@ Sahifalash uchun:
 - O'zgarishlar (`OldValues`, `NewValues`, `UserId`, `ClientIP`) tranzaksiya bazaga commit bo'lgach (`SavedChangesAsync`), avtomatik tarzda **MassTransit Transactional Outbox** orqali `EntityAuditedEvent` sifatida navbatga chiqariladi (asosiy jarayonga nol kechikish ta'siri bilan).
 
 ### 1.11. Xavfsizlik, Idempotentlik va Himoya
-- **HTTP Idempotency-Key Middleware:** Takroriy POST/PUT so'rovlarida Redis `IDistributedLock` orqali parallel dublikat chaqiruvlarni bloklaydi va faqat muvaffaqiyatli ($2xx$) javoblarni keshlaydi.
+- **HTTP Idempotency-Key Middleware:** Takroriy POST/PUT so'rovlarida Redis `IDistributedLock` orqali parallel dublikat chaqiruvlarni bloklaydi, so'rov tanasining SHA-256 hashini tekshirib kalitning boshqa parametrlar bilan qayta ishlatilishidan himoyalaydi (`409 Conflict`), `RecyclableMemoryStreamManager` yordamida javobni buferlaydi va muvaffaqiyatli ($2xx$) javoblarni keshlaydi.
 - **Session / Token Revocation Middleware:** L1 In-Memory (20 soniya) + L2 Redis orqali yaroqsiz qilingan sessiyalarni bir zumda aniqlab, `401 Unauthorized ("token_revoked")` qaytaradi.
 - **Taqsimlangan Rate Limiting:** Gateway va WebCore qatlamlarida `PartitionedRateLimiter` orqali foydalanuvchi (`user:{userId}`) yoki IP (`ip:{clientIp}`) bo'yicha alohida darcha asosida himoyalaydi.
 - **Resilience:** Polly v8 (`Microsoft.Extensions.Http.Resilience`) asosidagi `AddStandardResilienceHandler` orqali qayta urinish, timeout va circuit-breaker himoyasi.
-- **Health Checks & Monitoring:** `/health/live` (liveness), `/health/ready` (batafsil JSON formatda DB va Redis tayyorligi va millisekundlardagi kechikish hisoboti), hamda YARP Gateway Active Health Check bilan avtomatik failover.
+- **Health Checks & Monitoring:** `/health/live` (liveness), `/health/ready` (batafsil JSON formatda DB va Redis tayyorligi va millisekundlardagi kechikish hisoboti, qotib qolishning oldini olish uchun 3s timeout bilan), hamda YARP Gateway Active Health Check bilan avtomatik failover.
+- **Kestrel Server Cheklovlari:** Katta hajmdagi fayllarni MinIO ga xavfsiz yuklash uchun `MaxRequestBodySize` sukut bo'yicha 50MB ga moslashtirilgan (va `Kestrel:MaxRequestBodySize` orqali dinamik sozlanadi).
 - **Siqish (Compression):** Brotli (asosiy) + Gzip (fallback) orqali tarmoq trafigini siqish (gRPC binary oqimlarini buzmagan holda).
 - **OpenTelemetry:** OTLP protokoli orqali so'rovlar zanjirini kuzatish (MassTransit, Npgsql, HttpClient, AspNetCore tracing va Runtime/Process metrics).
 - **Serilog Logging:** `AppLoggerExtensions` (`LogInfo`, `LogWarn`, `LogError`, `LogDebug`) orqali log yozgan servis nomi (`ServiceName`), sinf nomi (`ClassName`), metod nomi (`MethodName`) va manba qatori (`LineNumber`) to'liq kompilyatsiya vaqtida (Compiler-Generated, 0 StackTrace) `[ServiceName] [ClassName.MethodName:LineNumber]` formatida muhrlanadi.
