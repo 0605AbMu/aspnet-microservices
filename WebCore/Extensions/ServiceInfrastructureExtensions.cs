@@ -75,7 +75,15 @@ public static class ServiceInfrastructureExtensions
         var connectionString = configuration.GetConnectionString(connectionName)
             ?? throw new InvalidOperationException($"Connection string '{connectionName}' is not configured.");
 
-        services.AddHealthChecks().AddDbContextCheck<TDbContext>("database", tags: ["ready"]);
+        services.AddHealthChecks().AddDbContextCheck<TDbContext>(
+            name: "database",
+            tags: ["ready"],
+            customTestQuery: async (db, ct) =>
+            {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(3));
+                return await db.Database.CanConnectAsync(cts.Token);
+            });
 
         services.TryAddSingleton(sp =>
         {

@@ -134,7 +134,7 @@ public static class WebCoreExtensions
 
         // --- Health Checks ---
         services.AddHealthChecks()
-            .AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
+            .AddCheck<RedisHealthCheck>("redis", tags: ["ready"], timeout: TimeSpan.FromSeconds(3));
 
         // --- Graceful Shutdown (30s) ---
         services.Configure<HostOptions>(opts =>
@@ -142,10 +142,11 @@ public static class WebCoreExtensions
             opts.ShutdownTimeout = TimeSpan.FromSeconds(30);
         });
 
-        // --- Kestrel MaxRequestBodySize (5MB) ---
+        // --- Kestrel MaxRequestBodySize (Default 50MB for MinIO & large payloads) ---
+        var maxRequestBodySize = configuration.GetValue<long?>("Kestrel:MaxRequestBodySize") ?? 50 * 1024 * 1024;
         services.Configure<KestrelServerOptions>(options =>
         {
-            options.Limits.MaxRequestBodySize = 5 * 1024 * 1024;
+            options.Limits.MaxRequestBodySize = maxRequestBodySize;
         });
 
         // --- Serilog ---
