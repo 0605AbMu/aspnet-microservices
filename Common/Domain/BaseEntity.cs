@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Microservices.Common.Domain;
 
-public abstract class BaseEntity<TId>
+public abstract class BaseEntity<TId> : IHasDomainEvents
 {
     public virtual TId Id { get; set; } = default!;
 

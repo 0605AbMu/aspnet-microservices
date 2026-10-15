@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MassTransit;
 using Microservices.Common.Context;
 using Microservices.Common.Domain;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +12,7 @@ namespace Microservices.Common.Persistence.Interceptors;
 public class AuditSaveChangesInterceptor(IServiceProvider serviceProvider) : SaveChangesInterceptor
 {
     private readonly AsyncLocal<List<AuditEntryData>?> pendingAuditEntries = new();
+    private readonly AsyncLocal<List<IDomainEvent>?> pendingDomainEvents = new();
 
     public override InterceptionResult<int> SavingChanges(
         DbContextEventData eventData,
@@ -27,6 +29,7 @@ public class AuditSaveChangesInterceptor(IServiceProvider serviceProvider) : Sav
     {
         UpdateEntities(eventData.Context);
         CaptureAuditEntries(eventData.Context);
+        CaptureDomainEvents(eventData.Context);
         return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
@@ -36,37 +39,80 @@ public class AuditSaveChangesInterceptor(IServiceProvider serviceProvider) : Sav
         CancellationToken cancellationToken = default)
     {
         var entries = pendingAuditEntries.Value;
-        if (entries is not null && entries.Count > 0)
+        var domainEvents = pendingDomainEvents.Value;
+
+        if ((entries is not null && entries.Count > 0) || (domainEvents is not null && domainEvents.Count > 0))
         {
             using var scope = serviceProvider.CreateScope();
-            var auditPublisher = scope.ServiceProvider.GetService<IAuditOutboxPublisher>();
-            var currentUser = scope.ServiceProvider.GetService<ICurrentUser>() ?? SystemCurrentUser.Instance;
 
-            if (auditPublisher is not null)
+            // 1. Publish audit logs to outbox
+            if (entries is not null && entries.Count > 0)
             {
-                foreach (var entry in entries)
-                {
-                    var auditEvent = new EntityAuditedEvent
-                    {
-                        EntityName = entry.EntityName,
-                        EntityId = entry.GetEntityId(),
-                        Action = entry.Action,
-                        OldValues = entry.OldValues.Count > 0 ? JsonSerializer.Serialize(entry.OldValues) : null,
-                        NewValues = entry.NewValues.Count > 0 ? JsonSerializer.Serialize(entry.NewValues) : null,
-                        UserId = currentUser.UserId,
-                        ClientIP = currentUser.ClientIp,
-                        UserAgent = currentUser.UserAgent,
-                        DigitalSignatureHash = null
-                    };
+                var auditPublisher = scope.ServiceProvider.GetService<IAuditOutboxPublisher>();
+                var currentUser = scope.ServiceProvider.GetService<ICurrentUser>() ?? SystemCurrentUser.Instance;
 
-                    await auditPublisher.PublishAuditAsync(auditEvent, cancellationToken);
+                if (auditPublisher is not null)
+                {
+                    foreach (var entry in entries)
+                    {
+                        var auditEvent = new EntityAuditedEvent
+                        {
+                            EntityName = entry.EntityName,
+                            EntityId = entry.GetEntityId(),
+                            Action = entry.Action,
+                            OldValues = entry.OldValues.Count > 0 ? JsonSerializer.Serialize(entry.OldValues) : null,
+                            NewValues = entry.NewValues.Count > 0 ? JsonSerializer.Serialize(entry.NewValues) : null,
+                            UserId = currentUser.UserId,
+                            ClientIP = currentUser.ClientIp,
+                            UserAgent = currentUser.UserAgent,
+                            DigitalSignatureHash = null
+                        };
+
+                        await auditPublisher.PublishAuditAsync(auditEvent, cancellationToken);
+                    }
                 }
+
+                pendingAuditEntries.Value = null;
             }
 
-            pendingAuditEntries.Value = null;
+            // 2. Publish domain events to outbox
+            if (domainEvents is not null && domainEvents.Count > 0)
+            {
+                var publishEndpoint = scope.ServiceProvider.GetService<IPublishEndpoint>();
+                if (publishEndpoint is not null)
+                {
+                    foreach (var domainEvent in domainEvents)
+                    {
+                        await publishEndpoint.Publish(domainEvent, domainEvent.GetType(), cancellationToken);
+                    }
+                }
+
+                pendingDomainEvents.Value = null;
+            }
         }
 
         return await base.SavedChangesAsync(eventData, result, cancellationToken);
+    }
+
+    private void CaptureDomainEvents(DbContext? context)
+    {
+        if (context is null) return;
+
+        var events = context.ChangeTracker.Entries<IHasDomainEvents>()
+            .Select(x => x.Entity)
+            .Where(x => x.DomainEvents.Count > 0)
+            .SelectMany(x =>
+            {
+                var evts = x.DomainEvents.ToList();
+                x.ClearDomainEvents();
+                return evts;
+            })
+            .ToList();
+
+        if (events.Count > 0)
+        {
+            pendingDomainEvents.Value = events;
+        }
     }
 
     private void UpdateEntities(DbContext? context)

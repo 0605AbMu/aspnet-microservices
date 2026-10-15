@@ -29,6 +29,12 @@ public interface ITenantContext
     /// </summary>
     IDisposable DisableTenantFilter();
 
+    /// <summary>
+    /// Temporarily changes the current tenant context (e.g. inside background workers or MassTransit consumers).
+    /// Restores the previous context when the returned token is disposed.
+    /// </summary>
+    IDisposable Change(long? tenantId, long? districtId = null, long? regionId = null, TenantScope? scope = null);
+
     long ResolveTenantId(long? requestedTenantId = null) =>
         requestedTenantId is > 0 ? requestedTenantId.Value : (TenantId ?? 0);
 }
@@ -44,6 +50,7 @@ public sealed class NullTenantContext : ITenantContext
     public bool IsTenantFilterDisabled => true;
 
     public IDisposable DisableTenantFilter() => NullDisposable.Instance;
+    public IDisposable Change(long? tenantId, long? districtId = null, long? regionId = null, TenantScope? scope = null) => NullDisposable.Instance;
 
     private sealed class NullDisposable : IDisposable
     {

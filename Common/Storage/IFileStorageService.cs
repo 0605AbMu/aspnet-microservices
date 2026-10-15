@@ -11,6 +11,25 @@ public interface IFileStorageService
         string contentType = "application/octet-stream",
         CancellationToken ct = default);
 
+    Task<string> UploadStreamAsync(
+        string bucketName,
+        string objectKey,
+        Stream stream,
+        long size,
+        string contentType = "application/octet-stream",
+        CancellationToken ct = default);
+
+    Task DownloadStreamAsync(
+        string bucketName,
+        string objectKey,
+        Stream destination,
+        CancellationToken ct = default);
+
+    Task DeleteObjectAsync(
+        string bucketName,
+        string objectKey,
+        CancellationToken ct = default);
+
     Task<string> GenerateDownloadUrlAsync(
         string bucketName,
         string objectKey,

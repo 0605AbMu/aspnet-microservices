@@ -7,6 +7,15 @@ public interface ITenantCache
         Func<CancellationToken, ValueTask<T>> factory,
         TimeSpan? localTtl = null,
         TimeSpan? remoteTtl = null,
+        IEnumerable<string>? tags = null,
+        CancellationToken cancellationToken = default);
+
+    Task SetAsync<T>(
+        string keyTemplate,
+        T value,
+        TimeSpan? localTtl = null,
+        TimeSpan? remoteTtl = null,
+        IEnumerable<string>? tags = null,
         CancellationToken cancellationToken = default);
 
     Task RemoveAsync(string keyTemplate, CancellationToken cancellationToken = default);
