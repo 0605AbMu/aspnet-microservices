@@ -6,8 +6,6 @@ namespace Microservices.Template.Service.Domain;
 public class TemplateItem : AggregateRoot<long>, ITenantEntity
 {
     public long? TenantId { get; set; }
-    public long? RegionId { get; set; }
-    public long? DistrictId { get; set; }
 
     [MaxLength(200)]
     public string Title { get; set; } = string.Empty;
