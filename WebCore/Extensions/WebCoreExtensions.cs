@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +45,9 @@ public static class WebCoreExtensions
         IConfiguration configuration,
         string serviceName)
     {
+        // --- Reverse Proxy Forwarded Headers (Nginx / Ingress / Cloudflare) ---
+        services.AddMicroserviceForwardedHeaders();
+
         // --- Context (Scoped — per request) ---
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUserHttpContext>();
@@ -155,6 +159,22 @@ public static class WebCoreExtensions
         return services;
     }
 
+    /// <summary>
+    /// Configures ForwardedHeaders for reverse proxies (Nginx, Kubernetes Ingress, Cloudflare, YARP).
+    /// Clears KnownNetworks and KnownProxies to safely accept X-Forwarded-For, X-Forwarded-Proto,
+    /// and X-Forwarded-Host from internal container/pod networks.
+    /// </summary>
+    public static IServiceCollection AddMicroserviceForwardedHeaders(this IServiceCollection services)
+    {
+        services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
+        return services;
+    }
+
     public static IServiceCollection AddMicroserviceSerilog(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -223,7 +243,10 @@ public static class WebCoreExtensions
     /// </summary>
     public static WebApplication UseWebCore(this WebApplication app)
     {
-        // 1. Correlation ID middleware — must be first
+        // 0. Forwarded headers from reverse proxies (Nginx / Cloudflare / Ingress) — must be first
+        app.UseForwardedHeaders();
+
+        // 1. Correlation ID middleware
         app.UseMiddleware<CorrelationIdMiddleware>();
 
         // 2. Ambient LogContext Middleware (Endpoint)
@@ -244,6 +267,7 @@ public static class WebCoreExtensions
                 diagnosticContext.Set("ClassName", httpContext.ResolveEndpointClassName());
                 diagnosticContext.Set("MethodName", httpContext.ResolveEndpointMethodName());
                 diagnosticContext.Set("LineNumber", 0);
+                diagnosticContext.Set("ClientIP", httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
                 diagnosticContext.Set(AppItemKeys.UserId,
                     httpContext.User.FindFirst(AppClaimTypes.Sub)?.Value ?? "anonymous");
                 diagnosticContext.Set(AppItemKeys.CorrelationId,

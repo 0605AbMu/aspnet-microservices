@@ -31,18 +31,9 @@ public class CurrentUserHttpContext(IHttpContextAccessor httpContextAccessor) : 
 
     public string? SecurityStamp => User?.FindFirstValue(AppClaimTypes.SecurityStamp);
 
-    public string? ClientIp
-    {
-        get
-        {
-            var header = HttpContext?.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(header))
-            {
-                return header.Split(',')[0].Trim();
-            }
-            return HttpContext?.Connection.RemoteIpAddress?.ToString();
-        }
-    }
+    public string? ClientIp =>
+        HttpContext?.Connection.RemoteIpAddress?.ToString()
+        ?? HttpContext?.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault()?.Split(',')[0].Trim();
 
     public string? UserAgent => HttpContext?.Request.Headers[AppHeaderNames.UserAgent].ToString();
 
