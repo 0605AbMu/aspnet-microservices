@@ -48,12 +48,12 @@ public class IdempotencyMiddleware(
         var key = keyVal.ToString().Trim();
         var tenantId = tenantContext.TenantId ?? 0;
         var cacheKey = string.Format(AppCacheKeys.IdempotencyKeyFormat, tenantId, context.Request.Path, key);
-        var currentPayloadHash = await ComputeRequestPayloadHashAsync(context.Request);
+        var currentPayloadHash = await ComputeRequestPayloadHashAsync(context.Request, context.RequestAborted);
 
         var cachedData = await cache.GetStringAsync(cacheKey);
         if (!string.IsNullOrEmpty(cachedData))
         {
-            var cached = JsonSerializer.Deserialize<CachedHttpResponse>(cachedData);
+            var cached = JsonSerializer.Deserialize<CachedHttpResponse>(cachedData, HttpContextExtensions.SharedJsonOptions);
             if (cached != null)
             {
                 if (!string.IsNullOrEmpty(cached.RequestPayloadHash) && cached.RequestPayloadHash != currentPayloadHash)
@@ -97,7 +97,7 @@ public class IdempotencyMiddleware(
         cachedData = await cache.GetStringAsync(cacheKey);
         if (!string.IsNullOrEmpty(cachedData))
         {
-            var cached = JsonSerializer.Deserialize<CachedHttpResponse>(cachedData);
+            var cached = JsonSerializer.Deserialize<CachedHttpResponse>(cachedData, HttpContextExtensions.SharedJsonOptions);
             if (cached != null)
             {
                 if (!string.IsNullOrEmpty(cached.RequestPayloadHash) && cached.RequestPayloadHash != currentPayloadHash)
@@ -149,7 +149,7 @@ public class IdempotencyMiddleware(
                     AbsoluteExpirationRelativeToNow = DefaultTtl
                 };
 
-                await cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(cachedObj), cacheOptions);
+                await cache.SetStringAsync(cacheKey, JsonSerializer.Serialize(cachedObj, HttpContextExtensions.SharedJsonOptions), cacheOptions);
             }
 
             memoryStream.Position = 0;
@@ -161,13 +161,17 @@ public class IdempotencyMiddleware(
         }
     }
 
-    private static async Task<string> ComputeRequestPayloadHashAsync(HttpRequest request)
+    private static async Task<string> ComputeRequestPayloadHashAsync(HttpRequest request, CancellationToken cancellationToken = default)
     {
+        if (request.ContentLength == 0)
+        {
+            return string.Empty;
+        }
+
         request.EnableBuffering();
         request.Body.Position = 0;
 
-        using var sha256 = SHA256.Create();
-        var hashBytes = await sha256.ComputeHashAsync(request.Body);
+        var hashBytes = await SHA256.HashDataAsync(request.Body, cancellationToken);
         request.Body.Position = 0;
 
         return Convert.ToHexString(hashBytes);

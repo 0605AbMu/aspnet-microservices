@@ -15,29 +15,112 @@ public class CurrentUserHttpContext(IHttpContextAccessor httpContextAccessor) : 
     private HttpContext? HttpContext => httpContextAccessor.HttpContext;
     private ClaimsPrincipal? User => HttpContext?.User;
 
+    private long? _userId;
+    private bool _userIdResolved;
     public long? UserId
     {
         get
         {
-            var raw = User?.FindFirstValue(AppClaimTypes.Sub) ?? User?.FindFirstValue(AppClaimTypes.UserId);
-            return long.TryParse(raw, out var id) ? id : null;
+            if (!_userIdResolved)
+            {
+                var raw = User?.FindFirstValue(AppClaimTypes.Sub) ?? User?.FindFirstValue(AppClaimTypes.UserId);
+                _userId = long.TryParse(raw, out var id) ? id : null;
+                _userIdResolved = true;
+            }
+            return _userId;
         }
     }
 
-    public string? Username =>
-        User?.FindFirstValue(AppClaimTypes.Username) ?? User?.FindFirstValue(ClaimTypes.Name);
+    private string? _username;
+    private bool _usernameResolved;
+    public string? Username
+    {
+        get
+        {
+            if (!_usernameResolved)
+            {
+                _username = User?.FindFirstValue(AppClaimTypes.Username) ?? User?.FindFirstValue(ClaimTypes.Name);
+                _usernameResolved = true;
+            }
+            return _username;
+        }
+    }
 
-    public string? SessionId => User?.FindFirstValue(AppClaimTypes.SessionId);
+    private string? _sessionId;
+    private bool _sessionIdResolved;
+    public string? SessionId
+    {
+        get
+        {
+            if (!_sessionIdResolved)
+            {
+                _sessionId = User?.FindFirstValue(AppClaimTypes.SessionId);
+                _sessionIdResolved = true;
+            }
+            return _sessionId;
+        }
+    }
 
-    public string? SecurityStamp => User?.FindFirstValue(AppClaimTypes.SecurityStamp);
+    private string? _securityStamp;
+    private bool _securityStampResolved;
+    public string? SecurityStamp
+    {
+        get
+        {
+            if (!_securityStampResolved)
+            {
+                _securityStamp = User?.FindFirstValue(AppClaimTypes.SecurityStamp);
+                _securityStampResolved = true;
+            }
+            return _securityStamp;
+        }
+    }
 
-    public string? ClientIp =>
-        HttpContext?.Connection.RemoteIpAddress?.ToString()
-        ?? HttpContext?.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault()?.Split(',')[0].Trim();
+    private string? _clientIp;
+    private bool _clientIpResolved;
+    public string? ClientIp
+    {
+        get
+        {
+            if (!_clientIpResolved)
+            {
+                _clientIp = HttpContext?.Connection.RemoteIpAddress?.ToString()
+                    ?? HttpContext?.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault()?.Split(',')[0].Trim();
+                _clientIpResolved = true;
+            }
+            return _clientIp;
+        }
+    }
 
-    public string? UserAgent => HttpContext?.Request.Headers[AppHeaderNames.UserAgent].ToString();
+    private string? _userAgent;
+    private bool _userAgentResolved;
+    public string? UserAgent
+    {
+        get
+        {
+            if (!_userAgentResolved)
+            {
+                _userAgent = HttpContext?.Request.Headers[AppHeaderNames.UserAgent].ToString();
+                _userAgentResolved = true;
+            }
+            return _userAgent;
+        }
+    }
 
-    public string? CorrelationId => HttpContext?.ResolveCorrelationId();
+    private string? _correlationId;
+    private bool _correlationIdResolved;
+    public string? CorrelationId
+    {
+        get
+        {
+            if (!_correlationIdResolved)
+            {
+                _correlationId = HttpContext?.ResolveCorrelationId();
+                _correlationIdResolved = true;
+            }
+            return _correlationId;
+        }
+    }
 
     private IReadOnlyList<string>? _roles;
     public IReadOnlyList<string> Roles => _roles ??= 
@@ -48,10 +131,15 @@ public class CurrentUserHttpContext(IHttpContextAccessor httpContextAccessor) : 
     public IReadOnlyList<string> Permissions => _permissions ??=
         (User?.FindAll(AppClaimTypes.Permission).Select(c => c.Value).ToList() ?? []);
 
+    private HashSet<string>? _permissionSet;
+
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated is true;
 
     public bool IsInRole(string role) => User?.IsInRole(role) is true;
 
-    public bool HasPermission(string permission) =>
-        Permissions.Contains(permission, StringComparer.Ordinal);
+    public bool HasPermission(string permission)
+    {
+        _permissionSet ??= new HashSet<string>(Permissions, StringComparer.Ordinal);
+        return _permissionSet.Contains(permission);
+    }
 }
