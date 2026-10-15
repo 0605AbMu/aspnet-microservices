@@ -2,7 +2,7 @@
 
 Ushbu repozitoriy zamonaviy, yuqori yuklamali va kengaytiriluvchan korporativ mikroservis loyihalari uchun mo'ljallangan **Global Starter Kit** (arxitektura shabloni) hisoblanadi.
 
-Loyiha hech qanday aniq biznes domeniga (eKadr, CRM, ERP, E-commerce va h.k.) bog'lanmagan bo'lib, ixtiyoriy korxona tizimini noldan toza, xavfsiz va yuqori unumdorlik bilan boshlash imkonini beradi.
+Loyiha hech qanday aniq biznes domeniga (CRM, ERP, E-commerce va h.k.) bog'lanmagan bo'lib, ixtiyoriy korxona tizimini noldan toza, xavfsiz va yuqori unumdorlik bilan boshlash imkonini beradi.
 
 ---
 
