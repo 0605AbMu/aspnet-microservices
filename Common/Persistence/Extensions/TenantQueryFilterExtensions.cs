@@ -63,6 +63,17 @@ public static class TenantQueryFilterExtensions
             {
                 entityType.SetQueryFilter(Expression.Lambda(combinedFilter, parameter));
             }
+
+            if (typeof(ITenantEntity).IsAssignableFrom(clrType) && typeof(ISoftDeletable).IsAssignableFrom(clrType))
+            {
+                modelBuilder.Entity(clrType)
+                    .HasIndex(nameof(ITenantEntity.TenantId), nameof(ISoftDeletable.IsDeleted));
+            }
+            else if (typeof(ITenantEntity).IsAssignableFrom(clrType))
+            {
+                modelBuilder.Entity(clrType)
+                    .HasIndex(nameof(ITenantEntity.TenantId));
+            }
         }
 
         modelBuilder.AddInboxStateEntity();

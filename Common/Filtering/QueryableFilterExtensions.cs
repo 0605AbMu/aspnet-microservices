@@ -141,6 +141,18 @@ public static class QueryableFilterExtensions
         return new PagedResult<T>(items, total);
     }
 
+    /// <summary>
+    /// Executes the query with AsNoTracking and returns a read-only list,
+    /// avoiding EF Core Change Tracker allocations.
+    /// </summary>
+    public static async Task<List<T>> ToReadOnlyListAsync<T>(
+        this IQueryable<T> query,
+        CancellationToken cancellationToken = default)
+        where T : class
+    {
+        return await query.AsNoTracking().ToListAsync(cancellationToken);
+    }
+
     private static Expression? BuildFilterExpression(
         ParameterExpression parameter,
         PropertyInfo propertyInfo,
