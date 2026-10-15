@@ -32,3 +32,22 @@ public interface ITenantContext
     long ResolveTenantId(long? requestedTenantId = null) =>
         requestedTenantId is > 0 ? requestedTenantId.Value : (TenantId ?? 0);
 }
+
+public sealed class NullTenantContext : ITenantContext
+{
+    public static readonly NullTenantContext Instance = new();
+
+    public long? TenantId => null;
+    public long? DistrictId => null;
+    public long? RegionId => null;
+    public TenantScope Scope => TenantScope.Global;
+    public bool IsTenantFilterDisabled => true;
+
+    public IDisposable DisableTenantFilter() => NullDisposable.Instance;
+
+    private sealed class NullDisposable : IDisposable
+    {
+        public static readonly NullDisposable Instance = new();
+        public void Dispose() { }
+    }
+}

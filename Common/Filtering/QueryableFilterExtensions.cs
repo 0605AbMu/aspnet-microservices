@@ -94,7 +94,7 @@ public static class QueryableFilterExtensions
         int size)
     {
         if (page < 1) page = 1;
-        if (size < 1) size = 20;
+        size = Math.Clamp(size, 1, 100);
 
         return query.Skip((page - 1) * size).Take(size);
     }
@@ -128,6 +128,10 @@ public static class QueryableFilterExtensions
         }
 
         var total = await baseQuery.CountAsync(cancellationToken);
+        if (total == 0)
+        {
+            return new PagedResult<T>([], 0);
+        }
 
         var items = await baseQuery
             .ApplySorting(request.SortBy, request.SortDescending)
@@ -198,20 +202,23 @@ public static class QueryableFilterExtensions
                 if (propertyInfo.PropertyType != typeof(string) || rawValue is null)
                     return null;
 
-                var stringContainsMethod = typeof(string).GetMethod(
-                    nameof(string.Contains),
-                    [typeof(string), typeof(StringComparison)])!;
+                var efFunctions = Expression.Property(null, typeof(EF), nameof(EF.Functions));
+                var patternExpr = Expression.Constant($"%{rawValue}%", typeof(string));
 
-                var comparison = rule.Condition.Equals(FilterCondition.ILike, StringComparison.OrdinalIgnoreCase)
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal;
-
-                var searchConst = Expression.Constant(rawValue, typeof(string));
-                var comparisonConst = Expression.Constant(comparison, typeof(StringComparison));
-
-                var notNullCheck = Expression.NotEqual(left, Expression.Constant(null, typeof(string)));
-                var containsCall = Expression.Call(left, stringContainsMethod, searchConst, comparisonConst);
-                return Expression.AndAlso(notNullCheck, containsCall);
+                if (rule.Condition.Equals(FilterCondition.ILike, StringComparison.OrdinalIgnoreCase))
+                {
+                    var iLikeMethod = typeof(NpgsqlDbFunctionsExtensions).GetMethod(
+                        nameof(NpgsqlDbFunctionsExtensions.ILike),
+                        [typeof(DbFunctions), typeof(string), typeof(string)])!;
+                    return Expression.Call(null, iLikeMethod, efFunctions, left, patternExpr);
+                }
+                else
+                {
+                    var likeMethod = typeof(DbFunctionsExtensions).GetMethod(
+                        nameof(DbFunctionsExtensions.Like),
+                        [typeof(DbFunctions), typeof(string), typeof(string)])!;
+                    return Expression.Call(null, likeMethod, efFunctions, left, patternExpr);
+                }
 
             case FilterCondition.In:
             case FilterCondition.NotIn:
@@ -224,19 +231,18 @@ public static class QueryableFilterExtensions
                 if (validValues.Count == 0)
                     return null;
 
-                var listType = typeof(List<>).MakeGenericType(targetType);
-                var listInstance = Activator.CreateInstance(listType)!;
-                var addMethod = listType.GetMethod(nameof(List<object>.Add))!;
-
-                foreach (var item in validValues)
+                var valuesArray = Array.CreateInstance(targetType, validValues.Count);
+                for (var i = 0; i < validValues.Count; i++)
                 {
-                    addMethod.Invoke(listInstance, [item]);
+                    valuesArray.SetValue(validValues[i], i);
                 }
 
-                var containsMethod = listType.GetMethod(nameof(List<object>.Contains), [targetType])!;
-                var listConstant = Expression.Constant(listInstance, listType);
+                var containsMethod = typeof(Enumerable).GetMethods()
+                    .First(m => m.Name == nameof(Enumerable.Contains) && m.GetParameters().Length == 2)
+                    .MakeGenericMethod(targetType);
 
-                Expression inExpr = Expression.Call(listConstant, containsMethod, memberAccess);
+                var arrayConstant = Expression.Constant(valuesArray);
+                Expression inExpr = Expression.Call(null, containsMethod, arrayConstant, memberAccess);
 
                 return rule.Condition.Equals(FilterCondition.NotIn, StringComparison.OrdinalIgnoreCase)
                     ? Expression.Not(inExpr)

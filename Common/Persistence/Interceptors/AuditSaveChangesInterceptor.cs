@@ -36,27 +36,31 @@ public class AuditSaveChangesInterceptor(IServiceProvider serviceProvider) : Sav
         CancellationToken cancellationToken = default)
     {
         var entries = pendingAuditEntries.Value;
-        var auditPublisher = ResolveAuditPublisher();
-        var currentUser = ResolveCurrentUser();
-
-        if (auditPublisher is not null && entries is not null && entries.Count > 0)
+        if (entries is not null && entries.Count > 0)
         {
-            foreach (var entry in entries)
-            {
-                var auditEvent = new EntityAuditedEvent
-                {
-                    EntityName = entry.EntityName,
-                    EntityId = entry.GetEntityId(),
-                    Action = entry.Action,
-                    OldValues = entry.OldValues.Count > 0 ? JsonSerializer.Serialize(entry.OldValues) : null,
-                    NewValues = entry.NewValues.Count > 0 ? JsonSerializer.Serialize(entry.NewValues) : null,
-                    UserId = currentUser.UserId,
-                    ClientIP = currentUser.ClientIp,
-                    UserAgent = currentUser.UserAgent,
-                    DigitalSignatureHash = null
-                };
+            using var scope = serviceProvider.CreateScope();
+            var auditPublisher = scope.ServiceProvider.GetService<IAuditOutboxPublisher>();
+            var currentUser = scope.ServiceProvider.GetService<ICurrentUser>() ?? SystemCurrentUser.Instance;
 
-                await auditPublisher.PublishAuditAsync(auditEvent, cancellationToken);
+            if (auditPublisher is not null)
+            {
+                foreach (var entry in entries)
+                {
+                    var auditEvent = new EntityAuditedEvent
+                    {
+                        EntityName = entry.EntityName,
+                        EntityId = entry.GetEntityId(),
+                        Action = entry.Action,
+                        OldValues = entry.OldValues.Count > 0 ? JsonSerializer.Serialize(entry.OldValues) : null,
+                        NewValues = entry.NewValues.Count > 0 ? JsonSerializer.Serialize(entry.NewValues) : null,
+                        UserId = currentUser.UserId,
+                        ClientIP = currentUser.ClientIp,
+                        UserAgent = currentUser.UserAgent,
+                        DigitalSignatureHash = null
+                    };
+
+                    await auditPublisher.PublishAuditAsync(auditEvent, cancellationToken);
+                }
             }
 
             pendingAuditEntries.Value = null;
@@ -80,15 +84,6 @@ public class AuditSaveChangesInterceptor(IServiceProvider serviceProvider) : Sav
                 entry.State = EntityState.Modified;
                 softDeletable.IsDeleted = true;
                 softDeletable.DeletedAt = now;
-
-                foreach (var child in context.ChangeTracker.Entries()
-                    .Where(e => e.State == EntityState.Deleted && e.Entity is ISoftDeletable))
-                {
-                    var childSoftDeletable = (ISoftDeletable)child.Entity;
-                    child.State = EntityState.Modified;
-                    childSoftDeletable.IsDeleted = true;
-                    childSoftDeletable.DeletedAt = now;
-                }
 
                 if (entry.Entity is IAuditableEntity auditOnDelete)
                 {
