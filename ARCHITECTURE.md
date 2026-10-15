@@ -24,7 +24,7 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
   - Servislararo sinxron so'rovlar uchun `protobuf-net.Grpc` ishlatiladi (qo'lda `.proto` fayllar yozilmaydi).
   - Shartnomalar `[ServiceContract]`, `[OperationContract]`, `[ProtoContract]`, `[ProtoMember]` atributlari orqali yoziladi.
   - Har bir servis o'zining yengil **`[ServiceName].Contracts`** loyihasiga ega bo'ladi.
-  - Cascading failure ning oldini olish uchun har bir gRPC chaqiruvida majburiy **Deadline (Timeout: 10 soniya)** va `CancellationToken` ishlatiladi.
+  - Cascading failure ning oldini olish uchun har bir gRPC chaqiruvida majburiy **Deadline (Timeout: 10 soniya)** va kiruvchi HTTP `RequestAborted` bilan bog'langan `CancellationToken` ishlatiladi (mijoz uzilsa, ichki gRPC ham darhol to'xtatiladi).
   - `GrpcClientContextInterceptor` va `GrpcServerContextInterceptor` orqali `CorrelationId`, `TenantId`, `UserId` va `traceparent` avtomatik uzatiladi.
   - `GrpcExceptionInterceptor` orqali `AppException` avtomatik tarzda tegishli `RpcException` ga o'giriladi.
   - **gRPC Payload & SocketsHttpHandler Tuning:** gRPC server va clientlarida maksimal xabar hajmi `16 MB` ga oshirilgan, response kompressiyasi (`Fastest`) faollashtirilgan, `EnableMultipleHttp2Connections = true` va KeepAlive Ping sozlanib, yuqori yuklamada HTTP/2 stream saturaatsiyasi va kechikishlarning oldi olinadi.
@@ -55,7 +55,7 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
 
 ### 1.6. Taqsimlangan Qulflash (Distributed Lock - RedLock & Watchdog)
 - Redis asosidagi `IDistributedLock` parallel to'qnashuvlar (race condition) va bir vaqtning o'zida bir xil resursni o'zgartirishdan himoya qiladi.
-- **Heartbeat/Watchdog:** Uzoq davom etadigan operatsiyalar paytida qulf muddatidan oldin tugab qolmasligi uchun `PeriodicTimer` yordamida avtomatik uzaytirish (heartbeat auto-renewal) amalga oshiriladi.
+- **Heartbeat/Watchdog va Polling Jitter:** Uzoq davom etadigan operatsiyalar paytida qulf muddatidan oldin tugab qolmasligi uchun `PeriodicTimer` yordamida avtomatik uzaytirish (heartbeat auto-renewal) amalga oshiriladi. Qulfni kutish siklida random jitter (`35-65ms`) qo'llaniladi, bu parallel so'rovlarning bir vaqtda Redis'ga zarba berishi (Lock Stampede) ni bartaraf etadi.
 
 ### 1.7. Fayllar bilan Ishlash (MinIO / S3 Object Storage & Stream Pooling)
 - Fayllar server diskiga emas, to'liq **MinIO (S3 API)** ga yuklanadi.
@@ -92,16 +92,16 @@ Sahifalash uchun:
 
 ### 1.9. Dinamik Filtrlash, Saralash va Sahifalash (QueryableFilterExtensions)
 - Dictionary asosida dinamik filtrlash qoidalari (`==`, `<>`, `>=`, `<=`, `between`, `like`, `ilike`, `in`, `nin`).
-- `ConcurrentDictionary` da keshlanuvchi va parametrlashtirilgan EF Core Expression Tree SQL Injectiondan to'liq himoyalaydi va yuqori tezlikni ta'minlaydi.
+- **Parametrlashtirilgan Dynamic LINQ & Auto-Prepare:** Filter ifodalari closure wrapper orqali uzatilib, SQL parametri (`$1`, `$2`) sifatida generatsiya qilinadi. Bu EF Core'ning `CompiledQueryCache` ni 100% qayta ishlatishini va PostgreSQL Server-Side Auto-Prepare (`MaxAutoPrepare = 50`) bilan rejalarni serverda keshlab olishini ta'minlaydi.
 - PostgreSQL `EF.Functions.ILike` / `EF.Functions.Like` hamda to'g'ridan-to'g'ri massiv `Contains` metodlaridan samarali foydalaniladi.
 - Read-only so'rovlar uchun `ToReadOnlyListAsync()` va `AsNoTracking()` kengaytmalari orqali EF Core Change Tracker xotira yuklamasi sezilarli darajada qisqartiriladi.
 
 ### 1.10. Audit va Non-Repudiation (AuditSaveChangesInterceptor)
 - Har bir `DbContext.SaveChangesAsync()` chaqirilganda `IAuditableEntity` va `ISoftDeletable` maydonlari avtomatik to'ldiriladi.
-- O'zgarishlar (`OldValues`, `NewValues`, `UserId`, `ClientIP`) tranzaksiya bazaga commit bo'lgach (`SavedChangesAsync`), avtomatik tarzda **MassTransit Transactional Outbox** orqali `EntityAuditedEvent` sifatida navbatga chiqariladi (asosiy jarayonga nol kechikish ta'siri bilan).
+- O'zgarishlar (`OldValues`, `NewValues`, `UserId`, `ClientIP`) tranzaksiya bazaga commit bo'lgach (`SavedChangesAsync`), avtomatik tarzda **MassTransit Transactional Outbox** orqali `EntityAuditedEvent` sifatida navbatga chiqariladi; tranzaksiya xatolik bilan tugaganda `SaveChangesFailedAsync` orqali `AsyncLocal` holati to'liq tozalanadi (xotira sizishining oldi olingan).
 
 ### 1.11. Xavfsizlik, Idempotentlik va Himoya
-- **HTTP Idempotency-Key Middleware:** Takroriy POST/PUT so'rovlarida Redis `IDistributedLock` orqali parallel dublikat chaqiruvlarni bloklaydi, so'rov tanasining SHA-256 hashini tekshirib kalitning boshqa parametrlar bilan qayta ishlatilishidan himoyalaydi (`409 Conflict`), `RecyclableMemoryStreamManager` yordamida javobni buferlaydi va muvaffaqiyatli ($2xx$) javoblarni keshlaydi.
+- **HTTP Idempotency-Key Middleware:** Takroriy POST/PUT so'rovlarida Redis `IDistributedLock` orqali parallel dublikat chaqiruvlarni bloklaydi, so'rov tanasining SHA-256 hashini tekshirib kalitning boshqa parametrlar bilan qayta ishlatilishidan himoyalaydi (`409 Conflict`), `RecyclableMemoryStreamManager` yordamida javobni buferlaydi, faqat `< 1 MB` va JSON javoblarni keshga yozib LOH xotira to'lib ketishidan himoyalaydi va muvaffaqiyatli ($2xx$) javoblarni keshlaydi.
 - **Session / Token Revocation Middleware:** L1 In-Memory (20 soniya) + L2 Redis orqali yaroqsiz qilingan sessiyalarni bir zumda aniqlab, `401 Unauthorized ("token_revoked")` qaytaradi.
 - **Taqsimlangan Rate Limiting:** Gateway va WebCore qatlamlarida `PartitionedRateLimiter` orqali alohida Client IP (`gateway-limiter`: 100 req/s sliding window) yoki foydalanuvchi (`user:{userId}`) darchasi bo'yicha mustaqil himoyalanadi; bitta buzg'unchi mijozning butun servisni bloklab qo'yishi (Noisy Neighbor / DoS) to'liq bartaraf etilgan.
 - **Resilience:** Polly v8 (`Microsoft.Extensions.Http.Resilience`) asosidagi `AddStandardResilienceHandler` orqali qayta urinish, circuit breaker va `BaseIntegrationOptions` ga bog'langan aniq `AttemptTimeout` hamda `TotalRequestTimeout` kafolati.
