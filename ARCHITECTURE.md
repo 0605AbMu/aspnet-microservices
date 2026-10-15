@@ -10,6 +10,7 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
 - Har bir mikroservis faqat o'z ma'lumotlar bazasiga ega bo'ladi (Database-per-Service pattern).
 - Servislarning boshqa servis bazasiga to'g'ridan-to'g'ri ulanishi qat'iyan man etiladi.
 - Baza sifatida faqat **PostgreSQL** (`Npgsql.EntityFrameworkCore.PostgreSQL`) ishlatiladi.
+- Barcha `DbContext` lar Singleton `NpgsqlDataSource` orqali ulanadi (global statement auto-preparation, dynamic multiplexing va optimal connection pooling). To'g'ridan-to'g'ri string fallback taqiqlangan, to'liq `NpgsqlDataSource` talab qilinadi.
 
 ### 1.2. Servis Ichki Qatlami: Pragmatic Direct Flow (No CQRS, No Repository)
 - **Repository Pattern taqiqlanadi:** EF Core `DbContext` ning o'zi repository va unit-of-work hisoblanadi. Keraksiz abstraksiya qatlamlari qo'shilmaydi.
