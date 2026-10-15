@@ -41,15 +41,20 @@ public class PermissionAuthorizationHandler(ICurrentUser currentUser) : Authoriz
 
 public class PermissionPolicyProvider(IOptions<AuthorizationOptions> options) : DefaultAuthorizationPolicyProvider(options)
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, AuthorizationPolicy> PolicyCache = new();
+
     public override async Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
         if (policyName.StartsWith(HasPermissionAttribute.PolicyPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            var permission = policyName[HasPermissionAttribute.PolicyPrefix.Length..];
-            return new AuthorizationPolicyBuilder()
-                .RequireAuthenticatedUser()
-                .AddRequirements(new PermissionRequirement(permission))
-                .Build();
+            return PolicyCache.GetOrAdd(policyName, static name =>
+            {
+                var permission = name[HasPermissionAttribute.PolicyPrefix.Length..];
+                return new AuthorizationPolicyBuilder()
+                    .RequireAuthenticatedUser()
+                    .AddRequirements(new PermissionRequirement(permission))
+                    .Build();
+            });
         }
 
         return await base.GetPolicyAsync(policyName);

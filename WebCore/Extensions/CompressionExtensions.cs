@@ -21,8 +21,6 @@ public static class CompressionExtensions
             options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
             [
                 "application/json",
-                "application/grpc",
-                "application/grpc+proto",
                 "text/plain",
                 "text/html",
                 "text/css",

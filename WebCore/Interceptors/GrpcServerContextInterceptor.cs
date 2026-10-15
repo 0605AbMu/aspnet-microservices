@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
 using Microservices.Common.Constants;
@@ -8,7 +9,7 @@ namespace Microservices.WebCore.Interceptors;
 
 /// <summary>
 /// Incoming gRPC server interceptor.
-/// Reads x-correlation-id and traceparent from gRPC metadata and populates HttpContext.Items.
+/// Reads x-correlation-id, traceparent, tenant, and user identity from gRPC metadata and populates HttpContext and User claims.
 /// Pushes MethodName into Serilog LogContext.
 /// </summary>
 public class GrpcServerContextInterceptor(
@@ -45,18 +46,68 @@ public class GrpcServerContextInterceptor(
         var httpContext = httpContextAccessor.HttpContext;
         if (httpContext is null) return;
 
-        var correlationId = context.RequestHeaders
+        var headers = context.RequestHeaders;
+
+        var correlationId = headers
             .FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.CorrelationId, StringComparison.OrdinalIgnoreCase))?.Value
             ?? Guid.NewGuid().ToString("N");
 
         httpContext.Items[AppItemKeys.CorrelationId] = correlationId;
 
-        var traceparent = context.RequestHeaders
+        var traceparent = headers
             .FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.TraceParent, StringComparison.OrdinalIgnoreCase))?.Value;
         if (!string.IsNullOrEmpty(traceparent))
             httpContext.Items[AppItemKeys.TraceParent] = traceparent;
 
-        logger.LogDebug("gRPC incoming call. Method={Method} CorrelationId={CorrelationId}",
-            context.Method, correlationId);
+        var claims = new List<Claim>();
+
+        var tenantId = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.TenantId, StringComparison.OrdinalIgnoreCase))?.Value;
+        if (!string.IsNullOrEmpty(tenantId))
+        {
+            httpContext.Items[AppItemKeys.TenantId] = tenantId;
+            claims.Add(new Claim(AppClaimTypes.TenantId, tenantId));
+        }
+
+        var districtId = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.DistrictId, StringComparison.OrdinalIgnoreCase))?.Value;
+        if (!string.IsNullOrEmpty(districtId))
+            claims.Add(new Claim(AppClaimTypes.DistrictId, districtId));
+
+        var regionId = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.RegionId, StringComparison.OrdinalIgnoreCase))?.Value;
+        if (!string.IsNullOrEmpty(regionId))
+            claims.Add(new Claim(AppClaimTypes.RegionId, regionId));
+
+        var tenantScope = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.TenantScope, StringComparison.OrdinalIgnoreCase))?.Value;
+        if (!string.IsNullOrEmpty(tenantScope))
+            claims.Add(new Claim(AppClaimTypes.TenantScope, tenantScope));
+
+        var userId = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.UserId, StringComparison.OrdinalIgnoreCase))?.Value;
+        if (!string.IsNullOrEmpty(userId))
+        {
+            httpContext.Items[AppItemKeys.UserId] = userId;
+            claims.Add(new Claim(AppClaimTypes.Sub, userId));
+            claims.Add(new Claim(AppClaimTypes.UserId, userId));
+        }
+
+        var authHeader = headers.FirstOrDefault(e => e.Key.Equals(AppGrpcMetadataKeys.Authorization, StringComparison.OrdinalIgnoreCase))?.Value;
+        if (!string.IsNullOrEmpty(authHeader) && !httpContext.Request.Headers.ContainsKey(AppHeaderNames.Authorization))
+        {
+            httpContext.Request.Headers[AppHeaderNames.Authorization] = authHeader;
+        }
+
+        if (claims.Count > 0)
+        {
+            var identity = new ClaimsIdentity(claims, "gRPC");
+            if (httpContext.User?.Identity?.IsAuthenticated == true)
+            {
+                httpContext.User.AddIdentity(identity);
+            }
+            else
+            {
+                httpContext.User = new ClaimsPrincipal(identity);
+            }
+        }
+
+        logger.LogDebug("gRPC incoming call. Method={Method} CorrelationId={CorrelationId} TenantId={TenantId} UserId={UserId}",
+            context.Method, correlationId, tenantId ?? "none", userId ?? "none");
     }
 }

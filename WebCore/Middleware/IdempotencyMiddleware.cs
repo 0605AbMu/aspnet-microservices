@@ -2,6 +2,8 @@ using System.Text;
 using System.Text.Json;
 using Microservices.Common.Constants;
 using Microservices.Common.Context;
+using Microservices.Common.Lock;
+using Microservices.WebCore.Extensions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
@@ -11,17 +13,18 @@ namespace Microservices.WebCore.Middleware;
 /// <summary>
 /// Idempotency Middleware.
 /// Prevents duplicate POST/PUT requests when user double-clicks or retries.
-/// Caches the response by Idempotency-Key in Redis for 2 minutes.
+/// Uses atomic distributed lock to prevent in-flight parallel race conditions.
+/// Caches successful 2xx responses by Idempotency-Key in Redis for 2 minutes.
 /// </summary>
 public class IdempotencyMiddleware(
     RequestDelegate next,
     IDistributedCache cache,
-    ITenantContext tenantContext,
+    IDistributedLock distributedLock,
     ILogger<IdempotencyMiddleware> logger)
 {
     private static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(2);
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, ITenantContext tenantContext)
     {
         if (!HttpMethods.IsPost(context.Request.Method) && !HttpMethods.IsPut(context.Request.Method))
         {
@@ -55,6 +58,39 @@ public class IdempotencyMiddleware(
             }
         }
 
+        // Acquire distributed lock to prevent concurrent execution of the same key
+        var lockKey = $"idempotency:{tenantId}:{key}";
+        await using var lockHandle = await distributedLock.TryAcquireLockAsync(
+            lockKey,
+            timeout: TimeSpan.FromMilliseconds(500),
+            expiry: TimeSpan.FromSeconds(60),
+            context.RequestAborted);
+
+        if (lockHandle is null)
+        {
+            logger.LogWarning("Concurrent idempotent request detected for key {Key}", key);
+            await context.WriteErrorResponseAsync(
+                StatusCodes.Status409Conflict,
+                "request_in_progress");
+            return;
+        }
+
+        // Re-check cache in case a previous request completed while waiting for lock
+        cachedData = await cache.GetStringAsync(cacheKey);
+        if (!string.IsNullOrEmpty(cachedData))
+        {
+            var cached = JsonSerializer.Deserialize<CachedHttpResponse>(cachedData);
+            if (cached != null)
+            {
+                context.Response.StatusCode = cached.StatusCode;
+                context.Response.ContentType = cached.ContentType;
+                context.Response.Headers[AppHeaderNames.IdempotencyKey] = key;
+                context.Response.Headers[AppHeaderNames.XCache] = "HIT-IDEMPOTENT";
+                await context.Response.WriteAsync(cached.Body);
+                return;
+            }
+        }
+
         var originalBodyStream = context.Response.Body;
         using var memoryStream = new MemoryStream();
         context.Response.Body = memoryStream;
@@ -66,7 +102,8 @@ public class IdempotencyMiddleware(
             memoryStream.Position = 0;
             var responseBody = await new StreamReader(memoryStream, Encoding.UTF8).ReadToEndAsync();
 
-            if (context.Response.StatusCode is >= 200 and < 500)
+            // Only cache successful 2xx responses (allow clients to retry after errors)
+            if (context.Response.StatusCode is >= 200 and < 300)
             {
                 var cachedObj = new CachedHttpResponse
                 {

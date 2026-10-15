@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microservices.Common.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -7,23 +8,15 @@ using Minio.DataModel.Args;
 namespace Microservices.WebCore.Storage;
 
 /// <summary>
-/// Shared MinIO Object Storage implementation.
+/// Shared MinIO Object Storage implementation using pooled/singleton IMinioClient.
 /// </summary>
 public class MinioFileStorageService(
+    IMinioClient minioClient,
     IConfiguration configuration,
     ILogger<MinioFileStorageService> logger) : IFileStorageService
 {
+    private static readonly ConcurrentDictionary<string, bool> EnsuredBuckets = new();
     private readonly string _endpoint = configuration["Minio:Endpoint"] ?? "localhost:9000";
-    private readonly string _accessKey = configuration["Minio:AccessKey"] ?? "minioadmin";
-    private readonly string _secretKey = configuration["Minio:SecretKey"] ?? "minioadmin";
-    private readonly bool _withSsl = configuration.GetValue<bool>("Minio:WithSSL");
-
-    private IMinioClient CreateClient() =>
-        new MinioClient()
-            .WithEndpoint(_endpoint)
-            .WithCredentials(_accessKey, _secretKey)
-            .WithSSL(_withSsl)
-            .Build();
 
     public string BuildObjectKey(long tenantId, string entityName, Guid fileGuid, string extension)
     {
@@ -41,15 +34,7 @@ public class MinioFileStorageService(
     {
         try
         {
-            var client = CreateClient();
-
-            var bucketExistsArgs = new BucketExistsArgs().WithBucket(bucketName);
-            var found = await client.BucketExistsAsync(bucketExistsArgs, ct);
-            if (!found)
-            {
-                var makeBucketArgs = new MakeBucketArgs().WithBucket(bucketName);
-                await client.MakeBucketAsync(makeBucketArgs, ct);
-            }
+            await EnsureBucketAsync(bucketName, ct);
 
             using var stream = new MemoryStream(fileBytes);
             var putObjectArgs = new PutObjectArgs()
@@ -59,14 +44,14 @@ public class MinioFileStorageService(
                 .WithObjectSize(stream.Length)
                 .WithContentType(contentType);
 
-            await client.PutObjectAsync(putObjectArgs, ct);
+            await minioClient.PutObjectAsync(putObjectArgs, ct);
             logger.LogInformation("MinIO file uploaded: Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
             return objectKey;
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "MinIO upload failed, fallback key returned: {ObjectKey}", objectKey);
-            return objectKey;
+            logger.LogError(ex, "MinIO upload failed for Bucket={Bucket}, ObjectKey={ObjectKey}", bucketName, objectKey);
+            throw new InvalidOperationException($"MinIO file upload failed for '{objectKey}': {ex.Message}", ex);
         }
     }
 
@@ -79,18 +64,33 @@ public class MinioFileStorageService(
     {
         try
         {
-            var client = CreateClient();
             var args = new PresignedGetObjectArgs()
                 .WithBucket(bucketName)
                 .WithObject(objectKey)
                 .WithExpiry(expiryMinutes * 60);
 
-            return await client.PresignedGetObjectAsync(args);
+            return await minioClient.PresignedGetObjectAsync(args);
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Pre-signed URL generation failed, returning fallback URL: {ObjectKey}", objectKey);
             return fallbackRelativePath ?? $"http://{_endpoint}/{bucketName}/{objectKey}?presigned=1&expires={expiryMinutes * 60}";
         }
+    }
+
+    private async Task EnsureBucketAsync(string bucketName, CancellationToken ct)
+    {
+        if (EnsuredBuckets.ContainsKey(bucketName))
+            return;
+
+        var bucketExistsArgs = new BucketExistsArgs().WithBucket(bucketName);
+        var found = await minioClient.BucketExistsAsync(bucketExistsArgs, ct);
+        if (!found)
+        {
+            var makeBucketArgs = new MakeBucketArgs().WithBucket(bucketName);
+            await minioClient.MakeBucketAsync(makeBucketArgs, ct);
+        }
+
+        EnsuredBuckets.TryAdd(bucketName, true);
     }
 }

@@ -22,6 +22,12 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        if (context.Response.HasStarted)
+        {
+            logger.LogWarning("Response already started. Cannot write global exception response.");
+            return;
+        }
+
         var correlationId = context.ResolveCorrelationId();
         var (httpStatus, message, code, args, logDetails) = MapException(exception);
 
@@ -43,6 +49,11 @@ public class GlobalExceptionMiddleware(RequestDelegate next, ILogger<GlobalExcep
 
     private static (HttpStatusCode status, string message, int code, object? data, string? logDetails) MapException(Exception exception)
     {
+        if (exception is ValidationException validationEx)
+        {
+            return (HttpStatusCode.BadRequest, validationEx.Message, 400, (object?)validationEx.Errors ?? validationEx.Args, validationEx.LogDetails);
+        }
+
         if (exception is AppException appEx)
         {
             var status = appEx.ErrorType switch

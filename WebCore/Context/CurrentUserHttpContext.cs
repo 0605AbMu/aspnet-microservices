@@ -48,17 +48,19 @@ public class CurrentUserHttpContext(IHttpContextAccessor httpContextAccessor) : 
 
     public string? CorrelationId => HttpContext?.ResolveCorrelationId();
 
-    public IReadOnlyList<string> Roles =>
-        User?.FindAll(AppClaimTypes.Role).Select(c => c.Value).ToList()
-        ?? User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList() ?? [];
+    private IReadOnlyList<string>? _roles;
+    public IReadOnlyList<string> Roles => _roles ??= 
+        (User?.FindAll(AppClaimTypes.Role).Select(c => c.Value).ToList()
+        ?? User?.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList() ?? []);
 
-    public IReadOnlyList<string> Permissions =>
-        User?.FindAll(AppClaimTypes.Permission).Select(c => c.Value).ToList() ?? [];
+    private IReadOnlyList<string>? _permissions;
+    public IReadOnlyList<string> Permissions => _permissions ??=
+        (User?.FindAll(AppClaimTypes.Permission).Select(c => c.Value).ToList() ?? []);
 
     public bool IsAuthenticated => User?.Identity?.IsAuthenticated is true;
 
     public bool IsInRole(string role) => User?.IsInRole(role) is true;
 
     public bool HasPermission(string permission) =>
-        User?.FindAll(AppClaimTypes.Permission).Any(c => c.Value == permission) is true;
+        Permissions.Contains(permission, StringComparer.Ordinal);
 }

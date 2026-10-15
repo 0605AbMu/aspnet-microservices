@@ -18,10 +18,11 @@ namespace Microservices.WebCore.Extensions;
 public static class ServiceInfrastructureExtensions
 {
     /// <summary>
-    /// Registers a pooled PostgreSQL DbContext with retry-on-failure, snake_case naming convention,
+    /// Registers a scoped PostgreSQL DbContext with retry-on-failure, snake_case naming convention,
     /// and the asynchronous AuditSaveChangesInterceptor.
+    /// Uses scoped DbContext lifetime to guarantee safe multi-tenant context injection without pool leakage.
     /// </summary>
-    public static IServiceCollection AddMicroserviceDbContextPool<TDbContext>(
+    public static IServiceCollection AddMicroserviceDbContext<TDbContext>(
         this IServiceCollection services,
         IConfiguration configuration,
         int commandTimeoutSeconds = 10,
@@ -31,7 +32,7 @@ public static class ServiceInfrastructureExtensions
         var connectionString = configuration.GetConnectionString(connectionName)
             ?? throw new InvalidOperationException($"Connection string '{connectionName}' is not configured.");
 
-        services.AddDbContextPool<TDbContext>((sp, options) =>
+        services.AddDbContext<TDbContext>((sp, options) =>
         {
             var auditInterceptor = sp.GetRequiredService<AuditSaveChangesInterceptor>();
 
@@ -44,10 +45,19 @@ public static class ServiceInfrastructureExtensions
                 })
                 .UseSnakeCaseNamingConvention()
                 .AddInterceptors(auditInterceptor);
-        }, poolSize: 1024);
+        });
 
         return services;
     }
+
+    [Obsolete("Use AddMicroserviceDbContext instead for safe scoped multi-tenant DbContext lifecycle.")]
+    public static IServiceCollection AddMicroserviceDbContextPool<TDbContext>(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        int commandTimeoutSeconds = 10,
+        string connectionName = ConnectionNames.Default)
+        where TDbContext : DbContext =>
+        services.AddMicroserviceDbContext<TDbContext>(configuration, commandTimeoutSeconds, connectionName);
 
     /// <summary>
     /// Registers MassTransit with RabbitMQ, PostgreSQL EF Core Transactional Outbox,

@@ -36,7 +36,14 @@ public class RedisDistributedLock(
                 return new LockReleaser(database, lockKey, lockValue, logger);
             }
 
-            await Task.Delay(50, cancellationToken);
+            try
+            {
+                await Task.Delay(50, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
         }
 
         logger.LogWarning("Failed to acquire distributed lock for key {Key} within timeout {Timeout}",

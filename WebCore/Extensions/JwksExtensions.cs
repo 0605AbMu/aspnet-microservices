@@ -44,18 +44,15 @@ public static class JwksExtensions
                     ValidateIssuerSigningKey = true
                 };
 
-                // If JWKS endpoint is configured, resolve keys from JWKS
+                if (!string.IsNullOrWhiteSpace(identityOptions.Issuer))
+                {
+                    options.Authority = identityOptions.Issuer;
+                }
+
+                // If explicit metadata / JWKS endpoint is configured
                 if (!string.IsNullOrWhiteSpace(identityOptions.JwksUri))
                 {
-                    options.ConfigurationManager = new Microsoft.IdentityModel.Protocols.ConfigurationManager<
-                        Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration>(
-                        $"{identityOptions.JwksUri.TrimEnd('/')}/../.well-known/openid-configuration",
-                        new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfigurationRetriever(),
-                        new Microsoft.IdentityModel.Protocols.HttpDocumentRetriever { RequireHttps = false })
-                    {
-                        AutomaticRefreshInterval = TimeSpan.FromHours(12),
-                        RefreshInterval = TimeSpan.FromMinutes(5)
-                    };
+                    options.MetadataAddress = identityOptions.JwksUri;
                 }
                 else if (!string.IsNullOrWhiteSpace(secret))
                 {
