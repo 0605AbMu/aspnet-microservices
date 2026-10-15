@@ -1,0 +1,25 @@
+## .NET Core
+bin/
+obj/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+appsettings.Development.json
+*.DotSettings.user
+
+## IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+## Logs & Temp
+*.log
+logs/
+.vs/
+TestResults/
+.DS_Store
+
+## Docker
+docker-compose.override.yml

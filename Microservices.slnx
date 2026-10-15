@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/Common/">
+    <Project Path="Common/Microservices.Common.csproj" />
+  </Folder>
+  <Folder Name="/Gateway/">
+    <Project Path="Gateway/Microservices.Gateway/Microservices.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/Integration/">
+    <Project Path="Integration/Microservices.Integration.csproj" />
+  </Folder>
+  <Folder Name="/Services/" />
+  <Folder Name="/Services/Template/">
+    <Project Path="Services/Template/Template.Contracts/Microservices.Template.Contracts.csproj" />
+    <Project Path="Services/Template/Template.Service/Microservices.Template.Service.csproj" />
+  </Folder>
+  <Folder Name="/WebCore/">
+    <Project Path="WebCore/Microservices.WebCore.csproj" />
+  </Folder>
+</Solution>
