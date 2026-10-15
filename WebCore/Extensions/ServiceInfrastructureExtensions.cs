@@ -7,6 +7,7 @@ using Microservices.WebCore.Interceptors;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using ProtoBuf.Grpc.ClientFactory;
 using ProtoBuf.Grpc.Server;
 
@@ -59,31 +60,24 @@ public static class ServiceInfrastructureExtensions
 
         services.AddHealthChecks().AddDbContextCheck<TDbContext>("database", tags: ["ready"]);
 
+        services.TryAddSingleton(sp =>
+        {
+            var builder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+            return builder.Build();
+        });
+
         services.AddDbContext<TDbContext>((sp, options) =>
         {
             var auditInterceptor = sp.GetRequiredService<AuditSaveChangesInterceptor>();
-            var dataSource = sp.GetService<Npgsql.NpgsqlDataSource>();
-
-            if (dataSource is not null)
-            {
-                options.UseNpgsql(dataSource, npgsql =>
-                {
-                    npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
-                    npgsql.CommandTimeout(commandTimeoutSeconds);
-                    npgsql.MigrationsAssembly(typeof(TDbContext).Assembly.FullName);
-                });
-            }
-            else
-            {
-                options.UseNpgsql(connectionString, npgsql =>
-                {
-                    npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
-                    npgsql.CommandTimeout(commandTimeoutSeconds);
-                    npgsql.MigrationsAssembly(typeof(TDbContext).Assembly.FullName);
-                });
-            }
+            var dataSource = sp.GetRequiredService<Npgsql.NpgsqlDataSource>();
 
             options
+                .UseNpgsql(dataSource, npgsql =>
+                {
+                    npgsql.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), errorCodesToAdd: null);
+                    npgsql.CommandTimeout(commandTimeoutSeconds);
+                    npgsql.MigrationsAssembly(typeof(TDbContext).Assembly.FullName);
+                })
                 .UseSnakeCaseNamingConvention()
                 .AddInterceptors(auditInterceptor);
         });
