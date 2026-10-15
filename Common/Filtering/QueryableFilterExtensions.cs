@@ -164,13 +164,8 @@ public static class QueryableFilterExtensions
         var rawValue = rule.Values.FirstOrDefault(v => v != null);
         var convertedValue = ConvertValue(rawValue, targetType);
 
-        Expression targetValueExpr = Expression.Constant(convertedValue, targetType);
+        Expression targetValueExpr = CreateParameterExpression(convertedValue, propertyInfo.PropertyType);
         Expression left = memberAccess;
-
-        if (propertyInfo.PropertyType != targetType)
-        {
-            targetValueExpr = Expression.Convert(targetValueExpr, propertyInfo.PropertyType);
-        }
 
         switch (rule.Condition.ToLowerInvariant())
         {
@@ -196,14 +191,8 @@ public static class QueryableFilterExtensions
                 if (fromVal is null || toVal is null)
                     return null;
 
-                Expression fromExpr = Expression.Constant(fromVal, targetType);
-                Expression toExpr = Expression.Constant(toVal, targetType);
-
-                if (propertyInfo.PropertyType != targetType)
-                {
-                    fromExpr = Expression.Convert(fromExpr, propertyInfo.PropertyType);
-                    toExpr = Expression.Convert(toExpr, propertyInfo.PropertyType);
-                }
+                var fromExpr = CreateParameterExpression(fromVal, propertyInfo.PropertyType);
+                var toExpr = CreateParameterExpression(toVal, propertyInfo.PropertyType);
 
                 var gte = Expression.GreaterThanOrEqual(left, fromExpr);
                 var lte = Expression.LessThanOrEqual(left, toExpr);
@@ -215,7 +204,7 @@ public static class QueryableFilterExtensions
                     return null;
 
                 var efFunctions = Expression.Property(null, typeof(EF), nameof(EF.Functions));
-                var patternExpr = Expression.Constant($"%{rawValue}%", typeof(string));
+                var patternExpr = CreateParameterExpression($"%{rawValue}%", typeof(string));
 
                 if (rule.Condition.Equals(FilterCondition.ILike, StringComparison.OrdinalIgnoreCase))
                 {
@@ -253,8 +242,8 @@ public static class QueryableFilterExtensions
                     .First(m => m.Name == nameof(Enumerable.Contains) && m.GetParameters().Length == 2)
                     .MakeGenericMethod(targetType);
 
-                var arrayConstant = Expression.Constant(valuesArray);
-                Expression inExpr = Expression.Call(null, containsMethod, arrayConstant, memberAccess);
+                var arrayExpr = CreateParameterExpression(valuesArray, valuesArray.GetType());
+                Expression inExpr = Expression.Call(null, containsMethod, arrayExpr, memberAccess);
 
                 return rule.Condition.Equals(FilterCondition.NotIn, StringComparison.OrdinalIgnoreCase)
                     ? Expression.Not(inExpr)
@@ -300,6 +289,19 @@ public static class QueryableFilterExtensions
         {
             return null;
         }
+    }
+
+    private static Expression CreateParameterExpression(object? value, Type targetType)
+    {
+        var closure = new ParameterClosure(value);
+        var constant = Expression.Constant(closure);
+        var property = Expression.Property(constant, nameof(ParameterClosure.Value));
+        return Expression.Convert(property, targetType);
+    }
+
+    private sealed class ParameterClosure(object? value)
+    {
+        public object? Value { get; } = value;
     }
 
     private static Dictionary<string, PropertyInfo> GetProperties(Type type)

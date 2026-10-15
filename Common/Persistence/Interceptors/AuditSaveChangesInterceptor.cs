@@ -94,6 +94,22 @@ public class AuditSaveChangesInterceptor(IServiceProvider serviceProvider) : Sav
         return await base.SavedChangesAsync(eventData, result, cancellationToken);
     }
 
+    public override Task SaveChangesFailedAsync(
+        DbContextErrorEventData eventData,
+        CancellationToken cancellationToken = default)
+    {
+        pendingAuditEntries.Value = null;
+        pendingDomainEvents.Value = null;
+        return base.SaveChangesFailedAsync(eventData, cancellationToken);
+    }
+
+    public override void SaveChangesFailed(DbContextErrorEventData eventData)
+    {
+        pendingAuditEntries.Value = null;
+        pendingDomainEvents.Value = null;
+        base.SaveChangesFailed(eventData);
+    }
+
     private void CaptureDomainEvents(DbContext? context)
     {
         if (context is null) return;
