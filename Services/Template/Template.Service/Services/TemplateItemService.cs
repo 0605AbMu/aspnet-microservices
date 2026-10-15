@@ -7,14 +7,17 @@ using Microservices.Template.Contracts.Events;
 using Microservices.Template.Contracts.Exceptions;
 using Microservices.Template.Service.Domain;
 using Microservices.Template.Service.Persistence;
+using Microservices.WebCore.Logging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Microservices.Template.Service.Services;
 
 public class TemplateItemService(
     TemplateDbContext dbContext,
     IPublishEndpoint publishEndpoint,
-    ITenantContext tenantContext)
+    ITenantContext tenantContext,
+    ILogger<TemplateItemService> logger)
 {
     public async Task<PagedResult<TemplateItemDto>> GetPagedAsync(
         PagedRequest request,
@@ -50,8 +53,9 @@ public class TemplateItemService(
         };
 
         dbContext.TemplateItems.Add(item);
+        await dbContext.SaveChangesAsync(ct);
 
-        // Publish to transactional outbox
+        // Publish to transactional outbox with the generated database Id
         await publishEndpoint.Publish(new TemplateItemCreatedIntegrationEvent
         {
             ItemId = item.Id,
@@ -59,6 +63,8 @@ public class TemplateItemService(
         }, ct);
 
         await dbContext.SaveChangesAsync(ct);
+
+        logger.LogInfo("TemplateItem with Id {0} created successfully", item.Id);
 
         return MapToDto(item);
     }

@@ -3,10 +3,13 @@ using Microservices.Common.Models;
 using Microservices.Template.Contracts.Dtos;
 using Microservices.Template.Service.Services;
 using Microservices.WebCore.Controllers;
+using Microservices.WebCore.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Microservices.Template.Service.Controllers;
 
+[Authorize]
 [Route("api/v1/template-items")]
 public class TemplateItemsController(TemplateItemService itemService) : BaseApiController
 {
@@ -37,6 +40,7 @@ public class TemplateItemsController(TemplateItemService itemService) : BaseApiC
     }
 
     [HttpPost]
+    [HasPermission("template_items.create")]
     public async Task<ActionResult<ApiResponse<TemplateItemDto>>> Create(
         [FromBody] CreateTemplateItemRequest request,
         CancellationToken ct)
@@ -46,6 +50,7 @@ public class TemplateItemsController(TemplateItemService itemService) : BaseApiC
     }
 
     [HttpPut("{id:long}")]
+    [HasPermission("template_items.update")]
     public async Task<ActionResult<ApiResponse<TemplateItemDto>>> Update(
         long id,
         [FromBody] UpdateTemplateItemRequest request,
@@ -56,6 +61,7 @@ public class TemplateItemsController(TemplateItemService itemService) : BaseApiC
     }
 
     [HttpDelete("{id:long}")]
+    [HasPermission("template_items.delete")]
     public async Task<ActionResult<ApiResponse<bool>>> Delete(long id, CancellationToken ct)
     {
         await itemService.DeleteAsync(id, ct);

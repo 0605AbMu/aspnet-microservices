@@ -172,13 +172,16 @@ public class ${SERVICE_NAME}Item : AggregateRoot<long>, ITenantEntity
 EOF
 
 cat <<EOF > "$SERVICE_IMPL_DIR/Persistence/${SERVICE_NAME}DbContext.cs"
+using Microservices.Common.Context;
 using Microservices.Common.Persistence;
 using Microservices.$SERVICE_NAME.Service.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace Microservices.$SERVICE_NAME.Service.Persistence;
 
-public class ${SERVICE_NAME}DbContext(DbContextOptions<${SERVICE_NAME}DbContext> options) : BaseDbContext(options)
+public class ${SERVICE_NAME}DbContext(
+    DbContextOptions<${SERVICE_NAME}DbContext> options,
+    ITenantContext? tenantContext = null) : BaseDbContext(options, tenantContext)
 {
     public DbSet<${SERVICE_NAME}Item> ${SERVICE_NAME}Items => Set<${SERVICE_NAME}Item>();
 }
@@ -236,6 +239,7 @@ public class ${SERVICE_NAME}Service(
         };
 
         dbContext.${SERVICE_NAME}Items.Add(item);
+        await dbContext.SaveChangesAsync(ct);
 
         await publishEndpoint.Publish(new ${SERVICE_NAME}CreatedIntegrationEvent
         {
@@ -281,10 +285,12 @@ using Microservices.Common.Models;
 using Microservices.$SERVICE_NAME.Contracts.Dtos;
 using Microservices.$SERVICE_NAME.Service.Services;
 using Microservices.WebCore.Controllers;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Microservices.$SERVICE_NAME.Service.Controllers;
 
+[Authorize]
 [Route("api/v1/${SERVICE_LOWER}s")]
 public class ${SERVICE_NAME}Controller(${SERVICE_NAME}Service service) : BaseApiController
 {
@@ -338,7 +344,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddMicroserviceDbContextPool<${SERVICE_NAME}DbContext>(configuration);
+        services.AddMicroserviceDbContext<${SERVICE_NAME}DbContext>(configuration);
         services.AddMicroserviceMassTransit<${SERVICE_NAME}DbContext>(configuration);
         services.AddMicroserviceGrpcServer();
 

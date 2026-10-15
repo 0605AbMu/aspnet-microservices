@@ -10,7 +10,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddMicroserviceDbContextPool<TemplateDbContext>(configuration);
+        services.AddMicroserviceDbContext<TemplateDbContext>(configuration);
         services.AddMicroserviceMassTransit<TemplateDbContext>(configuration);
         services.AddMicroserviceGrpcServer();
 
