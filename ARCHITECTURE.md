@@ -44,7 +44,7 @@ Ushbu arxitektura yuqori yuklamali (high-load), kengaytiriluvchan (scalable), is
 - Mikroservis `DbContext` lari `AddMicroserviceDbContext<TDbContext>` orqali Scoped lifecycleda ro'yxatdan o'tkaziladi (`AddMicroserviceDbContextPool` multi-tenant xavfsizligi tufayli tavsiya etilmaydi).
 - PostgreSQL da optimist qulflash uchun `xmin` system column concurrency token (`xid`) avtomatik ravishda barcha `BaseEntity` larda konfiguratsiya qilinadi.
 - Domen ob'ektlaridagi `IDomainEvent` lar `BaseEntity.AddDomainEvent` orqali yig'iladi va `AuditSaveChangesInterceptor` orqali avtomatik Transactional Outbox orqali e'lon qilinadi.
-- Ierarxik tuzilma qo'llab-quvvatlanadi: `Tenant` -> `District` -> `Region` -> `Global`.
+- Sof Multi-Tenancy modeli: `Tenant` (alohida ijarachi) va `Global` (tizim bo'yicha umumiy yoki super-admin).
 - Fon vazifalari yoki umumiy hisobotlar uchun `using (tenantContext.DisableTenantFilter())` orqali faqat ijarachi filtrini vaqtincha ochish mumkin (`IsDeleted = false` soft-delete filtri esa doim faol qoladi).
 - **Hot-Path Claims Caching & O(1) Permissions:** `CurrentUserHttpContext` da `UserId`, `Username`, `SessionId`, `SecurityStamp`, `ClientIp` va `CorrelationId` xususiyatlari so'rov davomida birinchi marta o'qilganda private backing-field'ga keshlanadi; takroriy `ClaimsPrincipal.Claims` chiziqli qidiruvi va `long.TryParse` string parsing 0 ga tushirilgan. Ruxsatlarni tekshirish (`HasPermission`) esa `HashSet<string>` orqali $O(1)$ vaqt murakkabligida bajariladi.
 
