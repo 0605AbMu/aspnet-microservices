@@ -49,9 +49,18 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Register YARP Reverse Proxy
+// Register YARP Reverse Proxy with tuned SocketsHttpHandler
 builder.Services.AddReverseProxy()
-    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
+    .ConfigureHttpClient((context, handler) =>
+    {
+        handler.EnableMultipleHttp2Connections = true;
+        handler.AutomaticDecompression = System.Net.DecompressionMethods.None;
+        handler.PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2);
+        handler.PooledConnectionLifetime = TimeSpan.FromMinutes(15);
+        handler.KeepAlivePingDelay = TimeSpan.FromSeconds(30);
+        handler.KeepAlivePingTimeout = TimeSpan.FromSeconds(5);
+    });
 
 var app = builder.Build();
 
