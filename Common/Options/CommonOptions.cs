@@ -26,6 +26,7 @@ public class ServiceOptions
 public class OpenTelemetryOptions
 {
     public string Endpoint { get; set; } = "http://localhost:4317";
+    public double SamplingRatio { get; set; } = 1.0;
 }
 
 public class RateLimitOptions
