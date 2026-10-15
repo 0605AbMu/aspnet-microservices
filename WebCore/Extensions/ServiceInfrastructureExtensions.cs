@@ -39,6 +39,12 @@ public static class ServiceInfrastructureExtensions
             builder.ConnectionStringBuilder.KeepAlive = 30;
         }
 
+        if (builder.ConnectionStringBuilder.MaxAutoPrepare == 0)
+        {
+            builder.ConnectionStringBuilder.MaxAutoPrepare = 50;
+            builder.ConnectionStringBuilder.AutoPrepareMinUsages = 2;
+        }
+
         return builder;
     }
 

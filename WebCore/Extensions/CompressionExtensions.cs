@@ -18,14 +18,20 @@ public static class CompressionExtensions
             options.EnableForHttps = true;
             options.Providers.Add<BrotliCompressionProvider>();
             options.Providers.Add<GzipCompressionProvider>();
-            options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+            options.MimeTypes =
             [
                 "application/json",
+                "application/problem+json",
+                "application/xml",
+                "text/xml",
                 "text/plain",
                 "text/html",
                 "text/css",
-                "application/javascript"
-            ]);
+                "application/javascript",
+                "text/javascript",
+                "application/grpc-web",
+                "application/wasm"
+            ];
         });
 
         services.Configure<BrotliCompressionProviderOptions>(options =>

@@ -27,7 +27,9 @@ public static class OpenTelemetryExtensions
                 resource.AddService(serviceOptions.Name, serviceVersion: serviceOptions.Version))
             .WithTracing(tracing =>
             {
+                var samplingRatio = Math.Clamp(otelOptions.SamplingRatio, 0.0, 1.0);
                 tracing
+                    .SetSampler(new TraceIdRatioBasedSampler(samplingRatio))
                     .AddSource("MassTransit")
                     .AddSource("Npgsql")
                     .AddAspNetCoreInstrumentation(opts =>
