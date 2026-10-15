@@ -95,25 +95,11 @@ public static class TenantQueryFilterExtensions
         var globalConst = Expression.Constant(TenantScope.Global);
         var isGlobal = Expression.Equal(scopeProp, globalConst);
 
-        var regionConst = Expression.Constant(TenantScope.Region);
-        var isRegion = Expression.Equal(scopeProp, regionConst);
-        var regionIdProp = Expression.Property(contextExpr, nameof(BaseDbContext.CurrentRegionId));
-        var entityRegionId = Expression.Property(parameter, nameof(ITenantEntity.RegionId));
-        var matchRegion = Expression.AndAlso(isRegion, Expression.Equal(entityRegionId, regionIdProp));
-
-        var districtConst = Expression.Constant(TenantScope.District);
-        var isDistrict = Expression.Equal(scopeProp, districtConst);
-        var districtIdProp = Expression.Property(contextExpr, nameof(BaseDbContext.CurrentDistrictId));
-        var entityDistrictId = Expression.Property(parameter, nameof(ITenantEntity.DistrictId));
-        var matchDistrict = Expression.AndAlso(isDistrict, Expression.Equal(entityDistrictId, districtIdProp));
-
         var tenantIdProp = Expression.Property(contextExpr, nameof(BaseDbContext.CurrentTenantId));
         var entityTenantId = Expression.Property(parameter, nameof(ITenantEntity.TenantId));
         var matchTenant = Expression.Equal(entityTenantId, tenantIdProp);
 
-        var combinedScopeFilter = Expression.OrElse(
-            isGlobal,
-            Expression.OrElse(matchRegion, Expression.OrElse(matchDistrict, matchTenant)));
+        var combinedScopeFilter = Expression.OrElse(isGlobal, matchTenant);
 
         return Expression.OrElse(isDisabledProp, combinedScopeFilter);
     }

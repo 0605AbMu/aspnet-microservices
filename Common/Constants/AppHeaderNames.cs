@@ -7,8 +7,6 @@ public static class AppHeaderNames
     public const string TraceParent = "traceparent";
     public const string TenantId = "X-Tenant-Id";
     public const string UserId = "X-User-Id";
-    public const string DistrictId = "X-District-Id";
-    public const string RegionId = "X-Region-Id";
     public const string TenantScope = "X-Tenant-Scope";
     public const string Authorization = "Authorization";
     public const string UserAgent = "User-Agent";
@@ -22,8 +20,6 @@ public static class AppGrpcMetadataKeys
     public const string TraceParent = "traceparent";
     public const string Authorization = "authorization";
     public const string TenantId = "x-tenant-id";
-    public const string DistrictId = "x-district-id";
-    public const string RegionId = "x-region-id";
     public const string TenantScope = "x-tenant-scope";
     public const string UserId = "x-user-id";
 }

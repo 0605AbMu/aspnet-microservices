@@ -14,8 +14,6 @@ public abstract class BaseDbContext(DbContextOptions options, ITenantContext? te
     public ITenantContext TenantContext { get; } = tenantContext ?? NullTenantContext.Instance;
 
     public long? CurrentTenantId => TenantContext.TenantId;
-    public long? CurrentDistrictId => TenantContext.DistrictId;
-    public long? CurrentRegionId => TenantContext.RegionId;
     public TenantScope CurrentScope => TenantContext.Scope;
     public bool IsTenantFilterDisabled => TenantContext.IsTenantFilterDisabled;
 
