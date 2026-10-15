@@ -9,6 +9,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Structured logging with WebCore Serilog setup
 builder.Services.AddMicroserviceSerilog(builder.Configuration, "microservices-gateway");
 builder.Services.AddHealthChecks();
+builder.Services.AddMicroserviceForwardedHeaders();
 
 // Edge Rate Limiting (Partitioned per Client IP to prevent single-client DoS)
 builder.Services.AddRateLimiter(options =>
@@ -16,15 +17,9 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy("gateway-limiter", httpContext =>
     {
-        var clientIp = httpContext.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault();
-        if (!string.IsNullOrWhiteSpace(clientIp))
-        {
-            clientIp = clientIp.Split(',')[0].Trim();
-        }
-        else
-        {
-            clientIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-ip";
-        }
+        var clientIp = httpContext.Connection.RemoteIpAddress?.ToString()
+            ?? httpContext.Request.Headers[AppHeaderNames.XForwardedFor].FirstOrDefault()?.Split(',')[0].Trim()
+            ?? "unknown-ip";
 
         return RateLimitPartition.GetSlidingWindowLimiter(
             clientIp,
@@ -60,6 +55,7 @@ builder.Services.AddReverseProxy()
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseMiddleware<CorrelationIdMiddleware>();
 
 // Security Headers Middleware (using indexer to prevent duplicates)
