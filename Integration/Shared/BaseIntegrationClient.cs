@@ -24,7 +24,7 @@ public abstract class BaseIntegrationClient(HttpClient httpClient, ILogger logge
         {
             return await HttpClient.GetFromJsonAsync<TResponse>(url, JsonOpts, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning(ex, "{ServiceName} unavailable for {OperationContext}. PendingSync fallback.", ServiceName, operationContext);
             return default;
@@ -43,7 +43,7 @@ public abstract class BaseIntegrationClient(HttpClient httpClient, ILogger logge
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadFromJsonAsync<TResponse>(JsonOpts, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.LogWarning(ex, "{ServiceName} unavailable for {OperationContext}. PendingSync fallback.", ServiceName, operationContext);
             return default;
