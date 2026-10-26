@@ -33,6 +33,11 @@ public static class AppLoggerExtensions
         int sourceLineNumber,
         object?[]? args)
     {
+        if (!logger.IsEnabled(level))
+        {
+            return;
+        }
+
         var className = Path.GetFileNameWithoutExtension(sourceFilePath);
         using (LogContext.PushProperty("MethodName", methodName))
         using (LogContext.PushProperty("ClassName", className))
@@ -76,6 +81,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Information)) return;
         PushCallerContextAndLog(logger, LogLevel.Information, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0]);
     }
 
@@ -88,6 +94,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Information)) return;
         PushCallerContextAndLog(logger, LogLevel.Information, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1]);
     }
 
@@ -101,6 +108,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Information)) return;
         PushCallerContextAndLog(logger, LogLevel.Information, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1, arg2]);
     }
 
@@ -137,6 +145,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Warning)) return;
         PushCallerContextAndLog(logger, LogLevel.Warning, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0]);
     }
 
@@ -149,6 +158,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Warning)) return;
         PushCallerContextAndLog(logger, LogLevel.Warning, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1]);
     }
 
@@ -162,6 +172,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Warning)) return;
         PushCallerContextAndLog(logger, LogLevel.Warning, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1, arg2]);
     }
 
@@ -198,6 +209,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Debug)) return;
         PushCallerContextAndLog(logger, LogLevel.Debug, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0]);
     }
 
@@ -210,6 +222,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Debug)) return;
         PushCallerContextAndLog(logger, LogLevel.Debug, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1]);
     }
 
@@ -223,6 +236,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Debug)) return;
         PushCallerContextAndLog(logger, LogLevel.Debug, null, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1, arg2]);
     }
 
@@ -250,6 +264,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Error)) return;
         PushCallerContextAndLog(logger, LogLevel.Error, exception, message, methodName, sourceFilePath, sourceLineNumber, [arg0]);
     }
 
@@ -263,6 +278,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Error)) return;
         PushCallerContextAndLog(logger, LogLevel.Error, exception, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1]);
     }
 
@@ -277,6 +293,7 @@ public static class AppLoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        if (!logger.IsEnabled(LogLevel.Error)) return;
         PushCallerContextAndLog(logger, LogLevel.Error, exception, message, methodName, sourceFilePath, sourceLineNumber, [arg0, arg1, arg2]);
     }
 
