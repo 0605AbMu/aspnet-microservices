@@ -1,4 +1,6 @@
+using System.Data;
 using MassTransit;
+using MassTransit.EntityFrameworkCoreIntegration;
 using Microservices.Common.Constants;
 using Microservices.Common.Options;
 using Microservices.Common.Persistence.Interceptors;
@@ -8,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using ProtoBuf.Grpc.ClientFactory;
 using ProtoBuf.Grpc.Server;
 
@@ -43,6 +46,17 @@ public static class ServiceInfrastructureExtensions
         {
             builder.ConnectionStringBuilder.MaxAutoPrepare = 50;
             builder.ConnectionStringBuilder.AutoPrepareMinUsages = 2;
+        }
+
+        // PostgreSQL's default random_page_cost (4) models spinning disks. With it the planner prefers walking the
+        // primary key backwards for "WHERE tenant_id = @t ORDER BY id DESC LIMIT n" (it assumes every tenant's rows
+        // are spread evenly over the whole table), which scans millions of foreign rows for tenants whose data is old.
+        // 1.1 is the PostgreSQL-documented value for SSD/NVMe storage and makes it use the (tenant_id, id DESC) index.
+        // An explicit "Options=..." in the connection string always wins (set "-c random_page_cost=4" to opt out).
+        // Note: connection poolers in transaction mode (PgBouncer) must allow the "options" startup parameter.
+        if (string.IsNullOrWhiteSpace(builder.ConnectionStringBuilder.Options))
+        {
+            builder.ConnectionStringBuilder.Options = "-c random_page_cost=1.1";
         }
 
         return builder;
@@ -149,6 +163,12 @@ public static class ServiceInfrastructureExtensions
             x.AddEntityFrameworkOutbox<TDbContext>(o =>
             {
                 o.UsePostgres();
+
+                // The delivery loops claim work with "FOR UPDATE SKIP LOCKED". Under MassTransit's default RepeatableRead
+                // that fails with 40001 "could not serialize access" as soon as two loops touch the same rows (wasted work,
+                // error logs, retries). Row locks already give the exclusivity; ReadCommitted is the right level here.
+                o.IsolationLevel = IsolationLevel.ReadCommitted;
+
                 o.UseBusOutbox();
                 o.DuplicateDetectionWindow = TimeSpan.FromMinutes(30);
             });
@@ -186,6 +206,14 @@ public static class ServiceInfrastructureExtensions
                 cfg.ConfigureEndpoints(context);
             });
         });
+
+        // MassTransit registers one outbox delivery loop. OutboxDeliveryWorkers > 1 adds more; they share work via
+        // SKIP LOCKED (see RabbitMqOptions.OutboxDeliveryWorkers for when that helps).
+        for (var worker = 1; worker < Math.Max(1, rabbitOptions.OutboxDeliveryWorkers); worker++)
+        {
+            services.AddSingleton<IHostedService>(sp =>
+                ActivatorUtilities.CreateInstance<BusOutboxDeliveryService<TDbContext>>(sp));
+        }
 
         return services;
     }
