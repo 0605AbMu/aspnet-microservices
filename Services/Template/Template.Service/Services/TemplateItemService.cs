@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using MassTransit;
 using Microservices.Common.Context;
 using Microservices.Common.Filtering;
@@ -20,57 +21,59 @@ public class TemplateItemService(
     ITenantContext tenantContext,
     ILogger<TemplateItemService> logger)
 {
-    public async Task<PagedResult<TemplateItemDto>> GetPagedAsync(
+    // Single source of truth for the entity -> DTO mapping: translated to SQL for reads (only the 5 columns the
+    // DTO needs are fetched, not the whole 13-column row) and compiled once for the write paths.
+    private static readonly Expression<Func<TemplateItem, TemplateItemDto>> ToDto = x => new TemplateItemDto
+    {
+        Id = x.Id,
+        Title = x.Title,
+        Description = x.Description,
+        Status = x.Status,
+        CreatedAt = x.CreatedAt
+    };
+
+    private static readonly Func<TemplateItem, TemplateItemDto> MapToDto = ToDto.Compile();
+
+    public Task<PagedResult<TemplateItemDto>> GetPagedAsync(
         PagedRequest request,
         IDictionary<string, FilterRule>? filters,
-        CancellationToken ct = default)
-    {
-        var pagedEntities = await dbContext.TemplateItems
-            .AsNoTracking()
-            .ToPagedResultAsync(request, filters, ct);
-
-        var dtos = pagedEntities.Items.Select(MapToDto).ToList();
-        return new PagedResult<TemplateItemDto>(dtos, pagedEntities.Total);
-    }
+        CancellationToken ct = default) =>
+        dbContext.TemplateItems.ToPagedResultAsync(request, ToDto, filters, ct);
 
     public async Task<TemplateItemDto> GetByIdAsync(long id, CancellationToken ct = default)
     {
-        var item = await dbContext.TemplateItems
-            .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id, ct)
+        return await dbContext.TemplateItems
+            .Where(x => x.Id == id)
+            .Select(ToDto)
+            .FirstOrDefaultAsync(ct)
             ?? throw new TemplateItemNotFoundException(id);
-
-        return MapToDto(item);
     }
 
     public async Task<TemplateItemDto> CreateAsync(CreateTemplateItemRequest request, CancellationToken ct = default)
     {
-        return await dbContext.Transactional(async () =>
+        var item = new TemplateItem
         {
-            var item = new TemplateItem
-            {
-                TenantId = tenantContext.TenantId,
-                Title = request.Title,
-                Description = request.Description,
-                Status = "Active"
-            };
+            TenantId = tenantContext.TenantId,
+            Title = request.Title,
+            Description = request.Description,
+            Status = "Active"
+        };
 
-            dbContext.TemplateItems.Add(item);
-            await dbContext.SaveChangesAsync(ct);
+        // Id comes from the HiLo sequence block: it is known here, without an INSERT round trip.
+        await dbContext.TemplateItems.AddAsync(item, ct);
 
-            // Publish to transactional outbox with the generated database Id within the active transaction
-            await publishEndpoint.Publish(new TemplateItemCreatedIntegrationEvent
-            {
-                ItemId = item.Id,
-                Title = item.Title
-            }, ct);
-
-            await dbContext.SaveChangesAsync(ct);
-
-            logger.LogInfo("TemplateItem with Id {0} created successfully", item.Id);
-
-            return MapToDto(item);
+        await publishEndpoint.Publish(new TemplateItemCreatedIntegrationEvent
+        {
+            ItemId = item.Id,
+            Title = item.Title
         }, ct);
+
+        // One SaveChanges = one batch, one transaction: the row and its outbox message commit together.
+        await dbContext.SaveChangesAsync(ct);
+
+        logger.LogInfo("TemplateItem with Id {0} created successfully", item.Id);
+
+        return MapToDto(item);
     }
 
     public async Task<TemplateItemDto> UpdateAsync(long id, UpdateTemplateItemRequest request, CancellationToken ct = default)
@@ -109,12 +112,4 @@ public class TemplateItemService(
         await dbContext.SaveChangesAsync(ct);
     }
 
-    private static TemplateItemDto MapToDto(TemplateItem entity) => new()
-    {
-        Id = entity.Id,
-        Title = entity.Title,
-        Description = entity.Description,
-        Status = entity.Status,
-        CreatedAt = entity.CreatedAt
-    };
 }
