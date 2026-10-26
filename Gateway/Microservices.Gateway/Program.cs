@@ -11,7 +11,12 @@ builder.Services.AddMicroserviceSerilog(builder.Configuration, "microservices-ga
 builder.Services.AddHealthChecks();
 builder.Services.AddMicroserviceForwardedHeaders();
 
-// Edge Rate Limiting (Partitioned per Client IP to prevent single-client DoS)
+// Edge Rate Limiting (Partitioned per Client IP to prevent single-client DoS).
+// Limits are configurable ("Gateway:RateLimit"); the defaults are deliberately generous because one client IP is
+// often many users (corporate NAT, mobile carrier NAT, a load balancer or another backend calling the API).
+var gatewayRateLimit = builder.Configuration.GetSection("Gateway:RateLimit").Get<GatewayRateLimitOptions>()
+    ?? new GatewayRateLimitOptions();
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -25,11 +30,12 @@ builder.Services.AddRateLimiter(options =>
             clientIp,
             _ => new SlidingWindowRateLimiterOptions
             {
-                PermitLimit = 100,
-                Window = TimeSpan.FromSeconds(1),
-                SegmentsPerWindow = 2,
+                PermitLimit = gatewayRateLimit.PermitLimit,
+                Window = TimeSpan.FromSeconds(gatewayRateLimit.WindowSeconds),
+                SegmentsPerWindow = gatewayRateLimit.SegmentsPerWindow,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 20
+                // Queued requests only add latency (p95 of ~1 s was measured at the old limit); reject instead.
+                QueueLimit = gatewayRateLimit.QueueLimit
             });
     });
 });
@@ -88,3 +94,11 @@ app.MapMicroserviceHealthChecks();
 app.MapReverseProxy();
 
 app.Run();
+
+internal sealed class GatewayRateLimitOptions
+{
+    public int PermitLimit { get; set; } = 1000;
+    public int WindowSeconds { get; set; } = 1;
+    public int SegmentsPerWindow { get; set; } = 2;
+    public int QueueLimit { get; set; } = 0;
+}
