@@ -48,7 +48,9 @@ public static class RateLimitingExtensions
                         PermitLimit = permitLimit,
                         Window = TimeSpan.FromMinutes(1),
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = isAuth ? 10 : 5
+                        // No queue: an over-limit request gets an immediate 429. A queued request would sit in the
+                        // limiter (holding its connection) until the next one-minute window opens.
+                        QueueLimit = 0
                     });
             });
 
@@ -63,7 +65,7 @@ public static class RateLimitingExtensions
                         PermitLimit = rateLimitOptions.StrictPerMinute,
                         Window = TimeSpan.FromMinutes(1),
                         QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                        QueueLimit = 2
+                        QueueLimit = 0
                     });
             });
         });
