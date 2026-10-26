@@ -34,7 +34,6 @@ public static class AppItemKeys
 
 public static class AppCacheKeys
 {
-    public const string IdempotencyKeyFormat = "idempotency:{0}:{1}:{2}"; // 0: tenant, 1: path, 2: key
     public const string SessionRevokedL1Format = "session_revoked:{0}:{1}"; // 0: userId, 1: sessionId/securityStamp
     public const string SessionRevokedL2Format = "revoked:session:{0}:{1}"; // 0: userId, 1: sessionId/securityStamp
 }
