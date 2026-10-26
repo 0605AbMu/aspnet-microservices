@@ -9,7 +9,7 @@ public static class CompressionExtensions
 {
     /// <summary>
     /// Enables Brotli (primary) + Gzip (fallback) response compression.
-    /// Brotli: Fastest level for low latency. Gzip: SmallestSize for maximum compression.
+    /// Brotli: Fastest level for low latency. Gzip (fallback): Fastest as well - CPU matters more than a few bytes.
     /// </summary>
     public static IServiceCollection AddMicroserviceCompression(this IServiceCollection services)
     {
@@ -41,7 +41,8 @@ public static class CompressionExtensions
 
         services.Configure<GzipCompressionProviderOptions>(options =>
         {
-            options.Level = CompressionLevel.SmallestSize;
+            // Fastest: SmallestSize (gzip level 9) costs several times the CPU for a few percent smaller JSON.
+            options.Level = CompressionLevel.Fastest;
         });
 
         return services;

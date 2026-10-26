@@ -93,10 +93,18 @@ public static class QueryableFilterExtensions
         int page,
         int size)
     {
+        var (skip, take) = NormalizePaging(page, size);
+        return query.Skip(skip).Take(take);
+    }
+
+    private static (int Skip, int Take) NormalizePaging(int page, int size)
+    {
         if (page < 1) page = 1;
         size = Math.Clamp(size, 1, 100);
 
-        return query.Skip((page - 1) * size).Take(size);
+        // (page - 1) * size overflows int for huge page numbers and produces a negative OFFSET.
+        var skip = (long)(page - 1) * size;
+        return (skip > int.MaxValue ? int.MaxValue : (int)skip, size);
     }
 
     public static IQueryable<T> ApplyPaging<T>(
@@ -113,9 +121,23 @@ public static class QueryableFilterExtensions
         return query.ApplyPaging(request.Page, request.PageSize);
     }
 
-    public static async Task<PagedResult<T>> ToPagedResultAsync<T>(
+    public static Task<PagedResult<T>> ToPagedResultAsync<T>(
         this IQueryable<T> query,
         PagedRequest request,
+        IDictionary<string, FilterRule>? filters = null,
+        CancellationToken cancellationToken = default)
+        where T : class =>
+        query.ToPagedResultAsync(request, x => x, filters, cancellationToken);
+
+    /// <summary>
+    /// Filters, sorts and pages <paramref name="query"/> on the entity, then projects only the requested columns
+    /// in SQL (<paramref name="selector"/>) instead of materializing whole entities.
+    /// Runs one query for the page (+1 look-ahead row); COUNT(*) only when the total cannot be derived from it.
+    /// </summary>
+    public static async Task<PagedResult<TResult>> ToPagedResultAsync<T, TResult>(
+        this IQueryable<T> query,
+        PagedRequest request,
+        Expression<Func<T, TResult>> selector,
         IDictionary<string, FilterRule>? filters = null,
         CancellationToken cancellationToken = default)
         where T : class
@@ -127,18 +149,38 @@ public static class QueryableFilterExtensions
             baseQuery = baseQuery.ApplyFilters(filters);
         }
 
-        var total = await baseQuery.CountAsync(cancellationToken);
-        if (total == 0)
-        {
-            return new PagedResult<T>([], 0);
-        }
+        var (skip, take) = NormalizePaging(request.Page, request.Size);
 
-        var items = await baseQuery
+        // Fetch one extra row: it tells us whether a next page exists without a COUNT(*).
+        var rows = await baseQuery
             .ApplySorting(request.SortBy, request.SortDescending)
-            .ApplyPaging(request.Page, request.Size)
+            .Skip(skip)
+            .Take(take + 1)
+            .Select(selector)
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<T>(items, total);
+        var hasMore = rows.Count > take;
+        if (hasMore)
+        {
+            rows.RemoveAt(rows.Count - 1);
+        }
+
+        int total;
+        if (!request.IncludeTotal)
+        {
+            total = PagedResult<TResult>.UnknownTotal;
+        }
+        else if (!hasMore && (rows.Count > 0 || skip == 0))
+        {
+            // Last (or only) page: the total is known exactly, no COUNT(*) round trip needed.
+            total = skip + rows.Count;
+        }
+        else
+        {
+            total = await baseQuery.CountAsync(cancellationToken);
+        }
+
+        return new PagedResult<TResult>(rows, total) { HasMore = hasMore };
     }
 
     /// <summary>
